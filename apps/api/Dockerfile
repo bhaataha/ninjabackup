@@ -41,13 +41,9 @@ COPY --from=builder /app/packages/database/prisma ./prisma
 COPY --from=prisma /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client ./node_modules/@prisma/client
 COPY --from=prisma /app/node_modules/.pnpm/@prisma+client*/node_modules/.prisma ./node_modules/.prisma
 
-# Entrypoint script — runs migrations then starts the app
-COPY apps/api/entrypoint.sh ./entrypoint.sh
-RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
-
 ENV NODE_ENV=production
 ENV PORT=3038
 
 EXPOSE 3038
 
-ENTRYPOINT ["./entrypoint.sh"]
+CMD ["node", "dist/main"]
