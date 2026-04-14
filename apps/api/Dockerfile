@@ -43,7 +43,7 @@ COPY --from=prisma /app/node_modules/.pnpm/@prisma+client*/node_modules/.prisma 
 
 # Entrypoint script — runs migrations then starts the app
 COPY apps/api/entrypoint.sh ./entrypoint.sh
-RUN chmod +x ./entrypoint.sh
+RUN sed -i 's/\r$//' ./entrypoint.sh && chmod +x ./entrypoint.sh
 
 ENV NODE_ENV=production
 ENV PORT=3038
