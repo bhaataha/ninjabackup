@@ -13,10 +13,10 @@ COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
 RUN pnpm install --frozen-lockfile
 
-# ── Stage 2: Prisma Generate ──
+# ── Stage 2: Prisma Generate (pinned to v6) ──
 FROM deps AS prisma
 COPY packages/database/ ./packages/database/
-RUN cd packages/database && npx prisma generate
+RUN cd packages/database && npx prisma@6 generate
 
 # ── Stage 3: Build ──
 FROM prisma AS builder
@@ -25,7 +25,7 @@ RUN cd apps/api && npx nest build
 
 # ── Stage 4: Production Runner ──
 FROM node:20-alpine AS runner
-RUN corepack enable pnpm
+RUN corepack enable pnpm && npm i -g prisma@6
 
 WORKDIR /app
 

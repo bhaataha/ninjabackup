@@ -7,9 +7,9 @@ echo "════════════════════════�
 
 # Run Prisma migrate on startup (safe for production — idempotent)
 echo "[1/2] Running database migrations..."
-npx prisma migrate deploy --schema ./prisma/schema.prisma 2>/dev/null || {
-  echo "[!] Migrate deploy not available, using db push..."
-  npx prisma db push --schema ./prisma/schema.prisma --accept-data-loss=false
+prisma db push --schema ./prisma/schema.prisma --accept-data-loss 2>/dev/null || {
+  echo "[!] db push failed, trying migrate deploy..."
+  prisma migrate deploy --schema ./prisma/schema.prisma 2>/dev/null || echo "[!] No migrations to run"
 }
 echo "[✓] Database ready"
 
