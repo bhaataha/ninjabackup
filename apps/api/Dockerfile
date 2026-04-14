@@ -5,12 +5,14 @@
 FROM node:20-alpine AS base
 RUN corepack enable pnpm
 
-# ── Stage 1: Dependencies ──
+# ── Stage 1: Dependencies (include devDeps for build) ──
 FROM base AS deps
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/api/package.json ./apps/api/
 COPY packages/database/package.json ./packages/database/
+# Install all deps including dev for build step
+ENV NODE_ENV=development
 RUN pnpm install --frozen-lockfile
 
 # ── Stage 2: Prisma Generate (pinned to v6) ──
@@ -21,11 +23,11 @@ RUN cd packages/database && npx prisma@6 generate
 # ── Stage 3: Build ──
 FROM prisma AS builder
 COPY apps/api/ ./apps/api/
-RUN cd apps/api && npx nest build
+RUN cd apps/api && npx @nestjs/cli build
 
 # ── Stage 4: Production Runner ──
 FROM node:20-alpine AS runner
-RUN corepack enable pnpm && npm i -g prisma@6
+RUN npm i -g prisma@6
 
 WORKDIR /app
 

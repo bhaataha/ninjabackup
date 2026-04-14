@@ -2,13 +2,15 @@
 # NinjaBackup Dashboard — Production Dockerfile
 # ═══════════════════════════════════════════════════════════
 
-# ── Stage 1: Dependencies ──
+# ── Stage 1: Dependencies (include devDeps for build) ──
 FROM node:20-alpine AS deps
 RUN corepack enable pnpm
 WORKDIR /app
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml turbo.json ./
 COPY apps/web/package.json apps/web/
 COPY packages/database/package.json packages/database/
+# Install ALL deps including dev (TypeScript types needed for build)
+ENV NODE_ENV=development
 RUN pnpm install --frozen-lockfile
 
 # ── Stage 2: Build ──
@@ -23,6 +25,7 @@ COPY . .
 ARG NEXT_PUBLIC_API_URL=https://api.backup.itninja.co.il/api/v1
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 ENV NEXT_TELEMETRY_DISABLED=1
+# Keep NODE_ENV=production for optimized Next.js build output
 ENV NODE_ENV=production
 
 RUN cd apps/web && npx next build
