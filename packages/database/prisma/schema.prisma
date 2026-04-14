@@ -1,0 +1,516 @@
+// NinjaBackup — Prisma Schema v1.0
+// Multi-Tenant Backup Platform
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ═══════════════════════════════════════════════════
+// ORGANIZATION & TENANCY
+// ═══════════════════════════════════════════════════
+
+model Organization {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  plan      String   @default("free") // free | pro | enterprise
+  isReseller Boolean @default(false) @map("is_reseller")
+  
+  tenants   Tenant[]
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("organizations")
+}
+
+model Tenant {
+  id               String   @id @default(uuid()) @db.Uuid
+  organizationId   String   @map("organization_id") @db.Uuid
+  name             String
+  slug             String   @unique
+  domain           String?
+  storageQuotaGb   Int      @default(50) @map("storage_quota_gb")
+  agentLimit       Int      @default(10) @map("agent_limit")
+  active           Boolean  @default(true)
+  
+  // Zero-Knowledge: Encrypted DEK envelope (only decryptable by tenant's passphrase)
+  encryptedDekEnvelope String? @map("encrypted_dek_envelope") @db.Text
+  dekSalt              String? @map("dek_salt")
+  
+  settings         Json     @default("{}")
+  
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  users            User[]
+  agents           Agent[]
+  storageVaults    StorageVault[]
+  backupPolicies   BackupPolicy[]
+  alertRules       AlertRule[]
+  auditLogs        AuditLog[]
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@map("tenants")
+}
+
+// ═══════════════════════════════════════════════════
+// USERS & AUTH
+// ═══════════════════════════════════════════════════
+
+enum UserRole {
+  OWNER
+  ADMIN
+  OPERATOR
+  VIEWER
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  email        String
+  passwordHash String   @map("password_hash")
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  role         UserRole @default(VIEWER)
+  
+  // MFA
+  mfaEnabled   Boolean  @default(false) @map("mfa_enabled")
+  mfaSecret    String?  @map("mfa_secret")
+  
+  // Recovery
+  recoveryKeyHash String? @map("recovery_key_hash")
+  
+  lastLogin    DateTime? @map("last_login")
+  active       Boolean   @default(true)
+  
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  auditLogs    AuditLog[]
+  apiKeys      ApiKey[]
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  
+  @@unique([tenantId, email])
+  @@map("users")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  name        String
+  keyHash     String   @unique @map("key_hash")
+  keyPrefix   String   @map("key_prefix") // first 8 chars for identification
+  permissions Json     @default("[]")
+  expiresAt   DateTime? @map("expires_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+  active      Boolean  @default(true)
+  
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime @default(now()) @map("created_at")
+  
+  @@map("api_keys")
+}
+
+// ═══════════════════════════════════════════════════
+// AGENTS
+// ═══════════════════════════════════════════════════
+
+enum AgentStatus {
+  ONLINE
+  OFFLINE
+  BACKING_UP
+  RESTORING
+  UPDATING
+  ERROR
+}
+
+enum OsType {
+  WINDOWS
+  LINUX
+  MACOS
+}
+
+model Agent {
+  id                  String      @id @default(uuid()) @db.Uuid
+  tenantId            String      @map("tenant_id") @db.Uuid
+  hostname            String
+  displayName         String?     @map("display_name")
+  osType              OsType      @map("os_type")
+  osVersion           String?     @map("os_version")
+  agentVersion        String?     @map("agent_version")
+  status              AgentStatus @default(OFFLINE)
+  
+  // Security
+  clientCertFingerprint String?   @map("client_cert_fingerprint")
+  registrationToken     String?   @map("registration_token") // one-time use
+  
+  // Stats
+  totalDataBytes      BigInt      @default(0) @map("total_data_bytes")
+  totalBackups        Int         @default(0) @map("total_backups")
+  
+  // Hardware info
+  cpuInfo             String?     @map("cpu_info")
+  ramGb               Int?        @map("ram_gb")
+  diskInfo            Json?       @map("disk_info") // [{drive, totalGb, freeGb, fsType}]
+  
+  lastSeen            DateTime?   @map("last_seen")
+  lastBackup          DateTime?   @map("last_backup")
+  
+  tenant              Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  backupJobs          BackupJob[]
+  restoreJobs         RestoreJob[]
+  agentPolicies       AgentPolicy[]
+  
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  
+  @@unique([tenantId, hostname])
+  @@map("agents")
+}
+
+// ═══════════════════════════════════════════════════
+// STORAGE VAULTS
+// ═══════════════════════════════════════════════════
+
+enum StorageType {
+  S3
+  MINIO
+  B2
+  R2
+  WASABI
+  LOCAL
+}
+
+model StorageVault {
+  id                String      @id @default(uuid()) @db.Uuid
+  tenantId          String      @map("tenant_id") @db.Uuid
+  name              String
+  type              StorageType
+  
+  // Connection
+  endpoint          String?     // S3 endpoint URL
+  region            String?
+  bucket            String
+  prefix            String?     // path prefix within bucket
+  
+  // Credentials (encrypted at application level)
+  accessKeyEncrypted String?    @map("access_key_encrypted") @db.Text
+  secretKeyEncrypted String?    @map("secret_key_encrypted") @db.Text
+  
+  // Features
+  immutableEnabled   Boolean    @default(false) @map("immutable_enabled")
+  versioningEnabled  Boolean    @default(true) @map("versioning_enabled")
+  
+  // Lifecycle tiers (days)
+  lifecycleHotDays   Int        @default(30) @map("lifecycle_hot_days")
+  lifecycleWarmDays  Int        @default(90) @map("lifecycle_warm_days")
+  
+  // Usage tracking
+  usedBytes          BigInt     @default(0) @map("used_bytes")
+  objectCount        Int        @default(0) @map("object_count")
+  lastCheckedAt      DateTime?  @map("last_checked_at")
+  
+  active             Boolean    @default(true)
+  
+  tenant             Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  backupPolicies     BackupPolicy[]
+  
+  createdAt          DateTime   @default(now()) @map("created_at")
+  updatedAt          DateTime   @updatedAt @map("updated_at")
+  
+  @@map("storage_vaults")
+}
+
+// ═══════════════════════════════════════════════════
+// BACKUP POLICIES
+// ═══════════════════════════════════════════════════
+
+enum BackupType {
+  FILE
+  IMAGE
+  BOTH
+}
+
+model BackupPolicy {
+  id              String     @id @default(uuid()) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  storageVaultId  String?    @map("storage_vault_id") @db.Uuid
+  name            String
+  type            BackupType @default(FILE)
+  
+  // Schedule
+  scheduleCron    String     @default("0 2 * * *") @map("schedule_cron") // daily at 2 AM
+  enabled         Boolean    @default(true)
+  
+  // Paths
+  includePaths    Json       @default("[]") @map("include_paths")  // ["/home", "C:\\Users"]
+  excludePatterns Json       @default("[]") @map("exclude_patterns") // ["*.tmp", "node_modules"]
+  
+  // Retention (Grandfather-Father-Son)
+  retentionHourly  Int       @default(0) @map("retention_hourly")
+  retentionDaily   Int       @default(7) @map("retention_daily")
+  retentionWeekly  Int       @default(4) @map("retention_weekly")
+  retentionMonthly Int       @default(12) @map("retention_monthly")
+  retentionYearly  Int       @default(2) @map("retention_yearly")
+  retentionLast    Int       @default(5) @map("retention_last")
+  
+  // Performance
+  bandwidthLimitMbps Int?    @map("bandwidth_limit_mbps")
+  cpuPriority        String  @default("normal") @map("cpu_priority") // low | normal | high
+  compressionEnabled Boolean @default(true) @map("compression_enabled")
+  vssEnabled         Boolean @default(true) @map("vss_enabled")
+  
+  tenant          Tenant       @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  storageVault    StorageVault? @relation(fields: [storageVaultId], references: [id], onDelete: SetNull)
+  
+  agentPolicies   AgentPolicy[]
+  backupJobs      BackupJob[]
+  
+  createdAt       DateTime     @default(now()) @map("created_at")
+  updatedAt       DateTime     @updatedAt @map("updated_at")
+  
+  @@map("backup_policies")
+}
+
+// Junction: Agent ↔ Policy (many-to-many)
+model AgentPolicy {
+  id        String @id @default(uuid()) @db.Uuid
+  agentId   String @map("agent_id") @db.Uuid
+  policyId  String @map("policy_id") @db.Uuid
+  
+  agent     Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  policy    BackupPolicy @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  
+  @@unique([agentId, policyId])
+  @@map("agent_policies")
+}
+
+// ═══════════════════════════════════════════════════
+// BACKUP JOBS & SNAPSHOTS
+// ═══════════════════════════════════════════════════
+
+enum JobStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+  CANCELLED
+}
+
+model BackupJob {
+  id              String    @id @default(uuid()) @db.Uuid
+  agentId         String    @map("agent_id") @db.Uuid
+  policyId        String?   @map("policy_id") @db.Uuid
+  type            BackupType
+  status          JobStatus @default(PENDING)
+  
+  // Progress
+  bytesProcessed  BigInt    @default(0) @map("bytes_processed")
+  bytesUploaded   BigInt    @default(0) @map("bytes_uploaded")
+  filesNew        Int       @default(0) @map("files_new")
+  filesChanged    Int       @default(0) @map("files_changed")
+  filesUnchanged  Int       @default(0) @map("files_unchanged")
+  errorsCount     Int       @default(0) @map("errors_count")
+  progressPercent Float     @default(0) @map("progress_percent")
+  
+  // Timing
+  durationSeconds Float?    @map("duration_seconds")
+  startedAt       DateTime? @map("started_at")
+  completedAt     DateTime? @map("completed_at")
+  
+  // Error info
+  errorMessage    String?   @map("error_message") @db.Text
+  errorDetails    Json?     @map("error_details")
+  
+  // Trigger info
+  triggeredBy     String    @default("schedule") @map("triggered_by") // schedule | manual | api
+  
+  agent           Agent        @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  policy          BackupPolicy? @relation(fields: [policyId], references: [id], onDelete: SetNull)
+  
+  snapshots       Snapshot[]
+  
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  
+  @@index([agentId, status])
+  @@index([agentId, createdAt])
+  @@map("backup_jobs")
+}
+
+model Snapshot {
+  id                String   @id @default(uuid()) @db.Uuid
+  jobId             String   @map("job_id") @db.Uuid
+  
+  // Restic snapshot reference
+  resticSnapshotId  String?  @map("restic_snapshot_id")
+  
+  type              BackupType
+  totalSize         BigInt   @default(0) @map("total_size")
+  totalFiles        Int      @default(0) @map("total_files")
+  
+  // For image backups
+  diskIdentifier    String?  @map("disk_identifier") // e.g., "\\.\PhysicalDrive0"
+  partitionInfo     Json?    @map("partition_info")
+  
+  // Lifecycle
+  isLocked          Boolean  @default(false) @map("is_locked")
+  expiresAt         DateTime? @map("expires_at")
+  
+  job               BackupJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  restoreJobs       RestoreJob[]
+  
+  createdAt         DateTime  @default(now()) @map("created_at")
+  
+  @@index([jobId])
+  @@map("snapshots")
+}
+
+// ═══════════════════════════════════════════════════
+// RESTORE JOBS
+// ═══════════════════════════════════════════════════
+
+enum RestoreType {
+  FULL
+  SELECTIVE
+  IMAGE
+}
+
+model RestoreJob {
+  id              String      @id @default(uuid()) @db.Uuid
+  agentId         String      @map("agent_id") @db.Uuid
+  snapshotId      String      @map("snapshot_id") @db.Uuid
+  type            RestoreType
+  status          JobStatus   @default(PENDING)
+  
+  // What to restore
+  selectedPaths   Json?       @map("selected_paths") // for SELECTIVE
+  targetPath      String?     @map("target_path")
+  overwriteExisting Boolean   @default(false) @map("overwrite_existing")
+  restorePermissions Boolean  @default(false) @map("restore_permissions")
+  
+  // Progress
+  bytesRestored   BigInt      @default(0) @map("bytes_restored")
+  filesRestored   Int         @default(0) @map("files_restored")
+  progressPercent Float       @default(0) @map("progress_percent")
+  
+  // Timing
+  startedAt       DateTime?   @map("started_at")
+  completedAt     DateTime?   @map("completed_at")
+  
+  // Error
+  errorMessage    String?     @map("error_message") @db.Text
+  
+  agent           Agent       @relation(fields: [agentId], references: [id], onDelete: Cascade)
+  snapshot        Snapshot    @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  
+  @@map("restore_jobs")
+}
+
+// ═══════════════════════════════════════════════════
+// ALERTS & NOTIFICATIONS
+// ═══════════════════════════════════════════════════
+
+enum AlertType {
+  BACKUP_FAILED
+  AGENT_OFFLINE
+  STORAGE_FULL
+  QUOTA_WARNING
+  AGENT_VERSION_OLD
+  RESTORE_FAILED
+}
+
+model AlertRule {
+  id          String    @id @default(uuid()) @db.Uuid
+  tenantId    String    @map("tenant_id") @db.Uuid
+  type        AlertType
+  
+  // Conditions
+  conditions  Json      @default("{}") // e.g., {"offlineMinutes": 30}
+  
+  // Notification channels
+  notifyEmail    Boolean @default(true) @map("notify_email")
+  notifyWebhook  Boolean @default(false) @map("notify_webhook")
+  webhookUrl     String? @map("webhook_url")
+  notifySlack    Boolean @default(false) @map("notify_slack")
+  slackWebhook   String? @map("slack_webhook")
+  
+  enabled     Boolean   @default(true)
+  
+  tenant      Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  
+  alerts      Alert[]
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+  
+  @@map("alert_rules")
+}
+
+model Alert {
+  id          String    @id @default(uuid()) @db.Uuid
+  ruleId      String    @map("rule_id") @db.Uuid
+  
+  title       String
+  message     String    @db.Text
+  severity    String    @default("warning") // info | warning | critical
+  
+  acknowledged Boolean  @default(false)
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  
+  metadata    Json?     // extra context
+  
+  rule        AlertRule @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+  
+  createdAt   DateTime  @default(now()) @map("created_at")
+  
+  @@index([ruleId, createdAt])
+  @@map("alerts")
+}
+
+// ═══════════════════════════════════════════════════
+// AUDIT LOG
+// ═══════════════════════════════════════════════════
+
+model AuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  tenantId     String   @map("tenant_id") @db.Uuid
+  userId       String?  @map("user_id") @db.Uuid  // null = system/agent action
+  
+  action       String   // e.g., "agent.registered", "backup.started", "user.login"
+  resourceType String?  @map("resource_type") // e.g., "agent", "backup_job"
+  resourceId   String?  @map("resource_id") @db.Uuid
+  
+  details      Json?    // action-specific details
+  ipAddress    String?  @map("ip_address")
+  userAgent    String?  @map("user_agent")
+  
+  // Integrity: HMAC signature of the log entry
+  signature    String?  @db.Text
+  
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user         User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  createdAt    DateTime @default(now()) @map("created_at")
+  
+  @@index([tenantId, createdAt])
+  @@index([tenantId, action])
+  @@index([tenantId, resourceType, resourceId])
+  @@map("audit_logs")
+}

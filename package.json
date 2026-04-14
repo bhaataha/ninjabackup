@@ -1,0 +1,17 @@
+{
+  "name": "ninjabackup",
+  "private": true,
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev",
+    "lint": "turbo run lint",
+    "db:generate": "turbo run db:generate --filter=@ninjabackup/api",
+    "db:push": "turbo run db:push --filter=@ninjabackup/api",
+    "db:migrate": "turbo run db:migrate --filter=@ninjabackup/api",
+    "db:studio": "turbo run db:studio --filter=@ninjabackup/api"
+  },
+  "packageManager": "pnpm@9.15.5",
+  "engines": {
+    "node": ">=20"
+  }
+}

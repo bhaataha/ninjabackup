@@ -1,0 +1,248 @@
+/**
+ * NinjaBackup API Client
+ * 
+ * Central API abstraction for the Dashboard.
+ * Handles authentication, token refresh, error handling,
+ * and provides typed methods for each endpoint group.
+ */
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3038/api/v1';
+
+interface TokenPair {
+  accessToken: string;
+  refreshToken: string;
+}
+
+// ─── Token Management ────────────────────────────────────
+
+let tokens: TokenPair | null = null;
+
+export function setTokens(t: TokenPair) {
+  tokens = t;
+  if (typeof window !== 'undefined') {
+    localStorage.setItem('nbk_access', t.accessToken);
+    localStorage.setItem('nbk_refresh', t.refreshToken);
+  }
+}
+
+export function getTokens(): TokenPair | null {
+  if (tokens) return tokens;
+  if (typeof window !== 'undefined') {
+    const access = localStorage.getItem('nbk_access');
+    const refresh = localStorage.getItem('nbk_refresh');
+    if (access && refresh) {
+      tokens = { accessToken: access, refreshToken: refresh };
+      return tokens;
+    }
+  }
+  return null;
+}
+
+export function clearTokens() {
+  tokens = null;
+  if (typeof window !== 'undefined') {
+    localStorage.removeItem('nbk_access');
+    localStorage.removeItem('nbk_refresh');
+  }
+}
+
+// ─── HTTP Client ─────────────────────────────────────────
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: any,
+  retry = true,
+): Promise<T> {
+  const t = getTokens();
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (t) {
+    headers['Authorization'] = `Bearer ${t.accessToken}`;
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+
+  // Handle 401 — attempt token refresh
+  if (res.status === 401 && retry && t?.refreshToken) {
+    const refreshed = await refreshTokens(t.refreshToken);
+    if (refreshed) {
+      return request<T>(method, path, body, false);
+    }
+    clearTokens();
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login';
+    }
+    throw new Error('Session expired');
+  }
+
+  if (!res.ok) {
+    const error = await res.json().catch(() => ({ message: res.statusText }));
+    throw new ApiError(res.status, error.message || 'API Error', error);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+async function refreshTokens(refreshToken: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+    public data?: any,
+  ) {
+    super(message);
+    this.name = 'ApiError';
+  }
+}
+
+// ─── Auth ────────────────────────────────────────────────
+
+export const auth = {
+  login: (email: string, password: string) =>
+    request<{ accessToken: string; refreshToken: string; requiresMfa?: boolean }>('POST', '/auth/login', { email, password }),
+
+  register: (data: { email: string; password: string; firstName: string; lastName: string; organizationName: string; tenantName?: string }) =>
+    request<{ accessToken: string; refreshToken: string }>('POST', '/auth/register', data),
+
+  verifyMfa: (code: string) =>
+    request<{ accessToken: string; refreshToken: string }>('POST', '/auth/mfa/verify', { code }),
+
+  setupMfa: () =>
+    request<{ secret: string; qrCodeUrl: string }>('POST', '/auth/mfa/setup'),
+
+  logout: () => {
+    clearTokens();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+  },
+};
+
+// ─── Tenants ─────────────────────────────────────────────
+
+export const tenants = {
+  getCurrent: () => request<any>('GET', '/tenants/current'),
+  getDashboard: () => request<any>('GET', '/tenants/dashboard'),
+  updateSettings: (data: any) => request<any>('PATCH', '/tenants/settings', data),
+};
+
+// ─── Users ───────────────────────────────────────────────
+
+export const users = {
+  list: () => request<any[]>('GET', '/users'),
+  getById: (id: string) => request<any>('GET', `/users/${id}`),
+  create: (data: any) => request<any>('POST', '/users', data),
+  update: (id: string, data: any) => request<any>('PATCH', `/users/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/users/${id}`),
+};
+
+// ─── Agents ──────────────────────────────────────────────
+
+export const agents = {
+  list: () => request<any[]>('GET', '/agents'),
+  getById: (id: string) => request<any>('GET', `/agents/${id}`),
+  update: (id: string, data: any) => request<any>('PATCH', `/agents/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/agents/${id}`),
+  getStats: () => request<any>('GET', '/agents/stats'),
+  createToken: () => request<{ token: string; expiresAt: string }>('POST', '/agents/token'),
+};
+
+// ─── Storage Vaults ──────────────────────────────────────
+
+export const storage = {
+  list: () => request<any[]>('GET', '/storage'),
+  getById: (id: string) => request<any>('GET', `/storage/${id}`),
+  create: (data: any) => request<any>('POST', '/storage', data),
+  update: (id: string, data: any) => request<any>('PATCH', `/storage/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/storage/${id}`),
+  testConnection: (id: string) => request<{ success: boolean; latencyMs: number }>('POST', `/storage/${id}/test`),
+  getUsage: (id: string) => request<any>('GET', `/storage/${id}/usage`),
+};
+
+// ─── Policies ────────────────────────────────────────────
+
+export const policies = {
+  list: () => request<any[]>('GET', '/policies'),
+  getById: (id: string) => request<any>('GET', `/policies/${id}`),
+  create: (data: any) => request<any>('POST', '/policies', data),
+  update: (id: string, data: any) => request<any>('PATCH', `/policies/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/policies/${id}`),
+  assignAgent: (id: string, agentId: string) => request<any>('POST', `/policies/${id}/agents/${agentId}`),
+  unassignAgent: (id: string, agentId: string) => request<void>('DELETE', `/policies/${id}/agents/${agentId}`),
+};
+
+// ─── Jobs ────────────────────────────────────────────────
+
+export const jobs = {
+  list: (params?: { status?: string; agentId?: string }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return request<any[]>('GET', `/jobs${qs ? `?${qs}` : ''}`);
+  },
+  getById: (id: string) => request<any>('GET', `/jobs/${id}`),
+  trigger: (data: { agentId: string; policyId: string }) => request<any>('POST', '/jobs/trigger', data),
+  cancel: (id: string) => request<any>('POST', `/jobs/${id}/cancel`),
+  getStats: () => request<any>('GET', '/jobs/stats'),
+};
+
+// ─── Snapshots ───────────────────────────────────────────
+
+export const snapshots = {
+  list: (agentId?: string) => {
+    const qs = agentId ? `?agentId=${agentId}` : '';
+    return request<any[]>('GET', `/snapshots${qs}`);
+  },
+  getById: (id: string) => request<any>('GET', `/snapshots/${id}`),
+  browse: (id: string, path: string) =>
+    request<any>('GET', `/snapshots/${id}/browse?path=${encodeURIComponent(path)}`),
+};
+
+// ─── Restore ─────────────────────────────────────────────
+
+export const restore = {
+  list: () => request<any[]>('GET', '/restore'),
+  trigger: (data: { snapshotId: string; agentId: string; targetPath?: string; includePaths?: string[] }) =>
+    request<any>('POST', '/restore', data),
+  getStatus: (id: string) => request<any>('GET', `/restore/${id}`),
+};
+
+// ─── Alerts ──────────────────────────────────────────────
+
+export const alerts = {
+  list: () => request<any[]>('GET', '/alerts'),
+  acknowledge: (id: string) => request<any>('POST', `/alerts/${id}/acknowledge`),
+  rules: {
+    list: () => request<any[]>('GET', '/alerts/rules'),
+    create: (data: any) => request<any>('POST', '/alerts/rules', data),
+    update: (id: string, data: any) => request<any>('PATCH', `/alerts/rules/${id}`, data),
+    delete: (id: string) => request<void>('DELETE', `/alerts/rules/${id}`),
+  },
+};
+
+// ─── Audit ───────────────────────────────────────────────
+
+export const audit = {
+  list: (params?: { action?: string; userId?: string; limit?: number; offset?: number }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return request<any[]>('GET', `/audit${qs ? `?${qs}` : ''}`);
+  },
+};

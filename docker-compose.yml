@@ -1,0 +1,62 @@
+# NinjaBackup — Docker Compose (Development)
+version: '3.8'
+
+services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ninjabackup
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5438:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Redis (for future job queue)
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6338:6379"
+    volumes:
+      - redis_data:/data
+
+  # API Server
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    ports:
+      - "3038:3038"
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ninjabackup?schema=public
+      JWT_SECRET: ${JWT_SECRET:-ninjabackup-prod-secret-change-me}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-ninjabackup-refresh-secret-change-me}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-0000000000000000000000000000000000000000000000000000000000000000}
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:3039}
+      PORT: 3038
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Web Dashboard
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    ports:
+      - "3039:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://api:3038/api/v1
+    depends_on:
+      - api
+
+volumes:
+  postgres_data:
+  redis_data:
