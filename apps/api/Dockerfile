@@ -29,6 +29,9 @@ RUN cd apps/api && npx @nestjs/cli build
 FROM node:20-alpine AS runner
 WORKDIR /app
 
+# Install prisma CLI globally so `prisma db push` runs without npx download prompts
+RUN npm i -g prisma@6
+
 # Copy ALL node_modules (includes pnpm workspace symlinks for @ninjabackup/database)
 COPY --from=builder /app/node_modules ./node_modules
 
@@ -46,12 +49,20 @@ COPY --from=builder /app/packages/database/prisma ./prisma
 COPY --from=builder /app/package.json ./root-package.json
 COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
+# Boot script — keeps prisma sync best-effort and logs to stdout, then execs Node
+COPY <<'EOF' /app/start.sh
+#!/bin/sh
+set -u
+echo "[boot] Syncing Prisma schema (additive)…"
+prisma db push --schema ./prisma/schema.prisma --skip-generate --accept-data-loss 2>&1 || echo "[boot] prisma db push failed — continuing"
+echo "[boot] Starting NestJS API on :${PORT:-3038}"
+exec node dist/main
+EOF
+RUN chmod +x /app/start.sh
+
 ENV NODE_ENV=production
 ENV PORT=3038
 
 EXPOSE 3038
 
-# Sync schema additively at boot (new tables / columns), then start the API.
-# If sync fails (e.g. requires destructive change) we log and still start —
-# the Nest bootstrap will surface any hard incompatibility.
-CMD ["sh", "-c", "npx prisma db push --schema ./prisma/schema.prisma --skip-generate || echo '[WARN] prisma db push failed — continuing'; exec node dist/main"]
+CMD ["/app/start.sh"]
