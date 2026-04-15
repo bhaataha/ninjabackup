@@ -329,8 +329,10 @@ export const installer = {
     request<
       { platform: string; arch: string; version: string; url: string; sha256: string; sizeBytes: number }[]
     >('GET', '/installer'),
-  installScript: (platform: 'windows' | 'linux' | 'macos') =>
-    request<{ script: string }>('GET', `/installer/script?platform=${platform}`),
+  installScript: (platform: 'windows' | 'linux' | 'macos', token: string, server?: string) => {
+    const qs = new URLSearchParams({ platform, token, ...(server ? { server } : {}) }).toString();
+    return request<{ script: string }>('GET', `/installer/script?${qs}`);
+  },
 };
 
 // ─── Settings ────────────────────────────────────────────

@@ -4,6 +4,8 @@ import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { installer as installerApi, agents as agentsApi } from '@/lib/api';
 
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3038/api/v1';
+
 type Installer = {
   platform: string;
   arch: string;
@@ -13,35 +15,30 @@ type Installer = {
   sizeBytes: number;
 };
 
-const PLATFORM_META: Record<string, { icon: string; color: string; instructions: (token: string) => string[] }> = {
+const PLATFORM_META: Record<string, { icon: string; color: string; oneLiner: (apiBase: string, token: string) => string }> = {
   windows: {
     icon: '🪟',
     color: '#3b82f6',
-    instructions: (token) => [
-      'Download and run the installer.',
-      `Enter your server URL and registration token: ${token || '<generate token first>'}`,
-      'The agent will install as a Windows service and start automatically.',
-    ],
+    oneLiner: (apiBase, token) =>
+      token
+        ? `iex ((Invoke-WebRequest "${apiBase}/installer/install.sh?platform=windows&token=${token}").Content)`
+        : '# Generate a token first',
   },
   linux: {
     icon: '🐧',
     color: '#f59e0b',
-    instructions: (token) => [
-      'Download the binary: curl -LO <download URL>',
-      'chmod +x ninjabackup-agent && sudo mv ninjabackup-agent /usr/local/bin/',
-      `Register: sudo ninjabackup-agent --register ${token || '<TOKEN>'} --server <SERVER_URL>`,
-      'Install: sudo ninjabackup-agent --install',
-    ],
+    oneLiner: (apiBase, token) =>
+      token
+        ? `curl -fsSL "${apiBase}/installer/install.sh?platform=linux&token=${token}" | sudo sh`
+        : '# Generate a token first',
   },
   macos: {
     icon: '🍎',
     color: '#8b5cf6',
-    instructions: (token) => [
-      'Download the binary for your architecture (Apple Silicon or Intel).',
-      'chmod +x ninjabackup-agent && sudo mv ninjabackup-agent /usr/local/bin/',
-      `Register: sudo ninjabackup-agent --register ${token || '<TOKEN>'} --server <SERVER_URL>`,
-      'Install: sudo ninjabackup-agent --install',
-    ],
+    oneLiner: (apiBase, token) =>
+      token
+        ? `curl -fsSL "${apiBase}/installer/install.sh?platform=macos&token=${token}" | sudo sh`
+        : '# Generate a token first',
   },
 };
 
@@ -227,56 +224,41 @@ export default function DownloadPage() {
 
             {meta && (
               <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
-                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)', textTransform: 'capitalize' }}>
-                  📋 Installation Steps — {selected}
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-md)', textTransform: 'capitalize' }}>
+                  ⚡ One-Liner Install — {selected}
                 </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {meta.instructions(token).map((step, i) => (
-                    <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                      <div
-                        style={{
-                          width: '28px',
-                          height: '28px',
-                          borderRadius: '50%',
-                          flexShrink: 0,
-                          background: 'var(--accent-glow)',
-                          border: '1px solid var(--border-active)',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          fontWeight: 700,
-                          fontSize: '0.75rem',
-                          color: 'var(--accent-primary)',
-                        }}
-                      >
-                        {i + 1}
-                      </div>
-                      <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', paddingTop: '4px', lineHeight: 1.5 }}>
-                        {step.includes(':') && step.includes('--') ? (
-                          <>
-                            {step.split(':')[0]}:
-                            <code
-                              style={{
-                                display: 'block',
-                                marginTop: '6px',
-                                padding: '8px 12px',
-                                background: 'var(--bg-input)',
-                                borderRadius: 'var(--radius-sm)',
-                                fontSize: '0.78rem',
-                                fontFamily: 'monospace',
-                                color: '#06b6d4',
-                                border: '1px solid var(--border-glass)',
-                              }}
-                            >
-                              {step.split(':').slice(1).join(':').trim()}
-                            </code>
-                          </>
-                        ) : (
-                          step
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-md)' }}>
+                  {token
+                    ? 'Paste this into a terminal on the target machine. The agent will be downloaded, registered, and installed as a system service.'
+                    : 'Generate a registration token first, then this command will be filled in with your token.'}
+                </p>
+                <div style={{ position: 'relative' }}>
+                  <code
+                    style={{
+                      display: 'block',
+                      padding: 'var(--space-md) var(--space-md) var(--space-md) var(--space-md)',
+                      background: 'var(--bg-input)',
+                      borderRadius: 'var(--radius-md)',
+                      fontSize: '0.78rem',
+                      fontFamily: 'monospace',
+                      color: token ? '#06b6d4' : 'var(--text-muted)',
+                      border: '1px solid var(--border-active)',
+                      whiteSpace: 'pre-wrap',
+                      wordBreak: 'break-all',
+                      lineHeight: 1.6,
+                    }}
+                  >
+                    {meta.oneLiner(API_BASE, token)}
+                  </code>
+                  {token && (
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      style={{ position: 'absolute', top: '8px', right: '8px' }}
+                      onClick={() => navigator.clipboard.writeText(meta.oneLiner(API_BASE, token))}
+                    >
+                      📋
+                    </button>
+                  )}
                 </div>
               </div>
             )}
