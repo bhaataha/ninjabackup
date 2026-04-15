@@ -25,9 +25,10 @@ COPY apps/api/ ./apps/api/
 RUN cd apps/api && npx @nestjs/cli build
 
 # ── Stage 4: Bundle for production ──
-# Use pnpm deploy to create a self-contained directory with all deps
+# Use pnpm deploy to create a self-contained directory with all deps.
+# Run from workspace root with --filter; pnpm 9 requires explicit project selection.
 FROM builder AS bundler
-RUN cd apps/api && pnpm deploy --prod /app/bundle
+RUN pnpm --filter @ninjabackup/api deploy --prod /app/bundle
 
 # Copy Prisma generated client into bundle
 RUN cp -r /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client /app/bundle/node_modules/@prisma/client

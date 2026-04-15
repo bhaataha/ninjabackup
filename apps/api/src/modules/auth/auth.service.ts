@@ -24,12 +24,22 @@ export class AuthService {
   ) {}
 
   async register(dto: RegisterDto) {
-    // Check if tenant slug is taken
-    const existingTenant = await this.prisma.tenant.findUnique({
-      where: { slug: dto.tenantSlug },
-    });
-    if (existingTenant) {
-      throw new ConflictException('Tenant slug already taken');
+    const tenantName = dto.tenantName ?? 'Main';
+    const derivedSlug =
+      dto.organizationName
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 32) || 'tenant';
+    const baseSlug = dto.tenantSlug ?? derivedSlug;
+
+    // Find a free slug — append -2, -3, ... if already taken.
+    let slug = baseSlug;
+    let suffix = 1;
+    while (await this.prisma.tenant.findUnique({ where: { slug } })) {
+      suffix += 1;
+      slug = `${baseSlug}-${suffix}`;
+      if (suffix > 50) throw new ConflictException('Could not allocate a unique tenant slug');
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
@@ -45,8 +55,8 @@ export class AuthService {
       const tenant = await tx.tenant.create({
         data: {
           organizationId: org.id,
-          name: dto.tenantName,
-          slug: dto.tenantSlug,
+          name: tenantName,
+          slug,
         },
       });
 

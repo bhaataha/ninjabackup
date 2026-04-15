@@ -6,14 +6,19 @@ export class RegisterDto {
   @IsString()
   organizationName: string;
 
-  @ApiProperty({ example: 'Main Office' })
+  @ApiPropertyOptional({ example: 'Main Office', description: 'Defaults to "Main" if omitted' })
+  @IsOptional()
   @IsString()
-  tenantName: string;
+  tenantName?: string;
 
-  @ApiProperty({ example: 'my-company', description: 'URL-friendly tenant slug' })
+  @ApiPropertyOptional({
+    example: 'my-company',
+    description: 'URL-friendly tenant slug. Auto-derived from organizationName if omitted.',
+  })
+  @IsOptional()
   @IsString()
   @Matches(/^[a-z0-9-]+$/, { message: 'Slug must be lowercase alphanumeric with hyphens' })
-  tenantSlug: string;
+  tenantSlug?: string;
 
   @ApiProperty({ example: 'admin@company.com' })
   @IsEmail()
