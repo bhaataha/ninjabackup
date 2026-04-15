@@ -24,7 +24,6 @@
     "@nestjs/swagger": "^8.1.0",
     "@nestjs/websockets": "^10.4.0",
     "@aws-sdk/client-s3": "^3.670.0",
-    "@ninjabackup/database": "workspace:*",
     "@prisma/client": "^6.5.0",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
