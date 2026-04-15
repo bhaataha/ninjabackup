@@ -51,4 +51,7 @@ ENV PORT=3038
 
 EXPOSE 3038
 
-CMD ["node", "dist/main"]
+# Sync schema additively at boot (new tables / columns), then start the API.
+# If sync fails (e.g. requires destructive change) we log and still start —
+# the Nest bootstrap will surface any hard incompatibility.
+CMD ["sh", "-c", "npx prisma db push --schema ./prisma/schema.prisma --skip-generate || echo '[WARN] prisma db push failed — continuing'; exec node dist/main"]
