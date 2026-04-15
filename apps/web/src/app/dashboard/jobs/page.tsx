@@ -1,27 +1,96 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useFetch } from '@/hooks/useFetch';
+import { useSocket } from '@/hooks/useSocket';
+import { jobs as jobsApi, agents as agentsApi, policies as policiesApi } from '@/lib/api';
 
-const JOBS = [
-  { id: '1', agent: 'SRV-DC01', policy: 'Daily File Backup', type: 'FILE', status: 'RUNNING', progress: 72, startedAt: '2026-04-14T08:15:00', duration: '45m', bytesProcessed: '86.3 GB', bytesUploaded: '12.1 GB', filesNew: 234, filesChanged: 1893, filesUnchanged: 128934, errors: 0, triggeredBy: 'schedule' },
-  { id: '2', agent: 'DESKTOP-HR01', policy: 'Daily File Backup', type: 'FILE', status: 'SUCCESS', progress: 100, startedAt: '2026-04-14T08:00:00', duration: '8m', bytesProcessed: '14.6 GB', bytesUploaded: '1.2 GB', filesNew: 12, filesChanged: 89, filesUnchanged: 34521, errors: 0, triggeredBy: 'schedule' },
-  { id: '3', agent: 'SRV-FILE01', policy: 'Hourly Critical Files', type: 'FILE', status: 'FAILED', progress: 43, startedAt: '2026-04-14T07:00:00', duration: '23m', bytesProcessed: '230.6 GB', bytesUploaded: '0 B', filesNew: 0, filesChanged: 0, filesUnchanged: 0, errors: 3, triggeredBy: 'schedule', errorMessage: 'S3 connection timeout after 3 retries' },
-  { id: '4', agent: 'DESKTOP-DEV03', policy: 'Daily File Backup', type: 'FILE', status: 'SUCCESS', progress: 100, startedAt: '2026-04-14T06:30:00', duration: '15m', bytesProcessed: '50.0 GB', bytesUploaded: '4.8 GB', filesNew: 456, filesChanged: 2341, filesUnchanged: 67890, errors: 0, triggeredBy: 'schedule' },
-  { id: '5', agent: 'DEV-LINUX01', policy: 'Weekly Image Backup', type: 'IMAGE', status: 'SUCCESS', progress: 100, startedAt: '2026-04-14T06:00:00', duration: '52m', bytesProcessed: '80.0 GB', bytesUploaded: '23.4 GB', filesNew: 0, filesChanged: 0, filesUnchanged: 0, errors: 0, triggeredBy: 'schedule' },
-  { id: '6', agent: 'SRV-DC01', policy: 'Daily File Backup', type: 'FILE', status: 'SUCCESS', progress: 100, startedAt: '2026-04-13T08:15:00', duration: '42m', bytesProcessed: '85.0 GB', bytesUploaded: '9.8 GB', filesNew: 122, filesChanged: 1567, filesUnchanged: 129100, errors: 0, triggeredBy: 'schedule' },
-  { id: '7', agent: 'DESKTOP-HR01', policy: 'Daily File Backup', type: 'FILE', status: 'SUCCESS', progress: 100, startedAt: '2026-04-13T08:00:00', duration: '7m', bytesProcessed: '14.5 GB', bytesUploaded: '0.8 GB', filesNew: 5, filesChanged: 45, filesUnchanged: 34560, errors: 0, triggeredBy: 'schedule' },
-  { id: '8', agent: 'LAPTOP-CEO', policy: 'Daily File Backup', type: 'FILE', status: 'CANCELLED', progress: 12, startedAt: '2026-04-12T14:00:00', duration: '3m', bytesProcessed: '5.0 GB', bytesUploaded: '0.2 GB', filesNew: 0, filesChanged: 0, filesUnchanged: 0, errors: 0, triggeredBy: 'manual' },
-];
+type Job = {
+  id: string;
+  agentId: string;
+  agentHostname?: string;
+  policyId?: string;
+  policyName?: string;
+  type: 'FILE' | 'IMAGE';
+  status: 'PENDING' | 'RUNNING' | 'SUCCESS' | 'FAILED' | 'CANCELLED';
+  progress?: number;
+  startedAt?: string;
+  finishedAt?: string;
+  durationSec?: number;
+  bytesProcessed?: number;
+  bytesUploaded?: number;
+  filesNew?: number;
+  filesChanged?: number;
+  filesUnchanged?: number;
+  errors?: number;
+  triggeredBy?: 'schedule' | 'manual';
+  errorMessage?: string;
+};
 
-function getStatusClass(s: string) {
-  const map: Record<string, string> = { SUCCESS: 'success', FAILED: 'failed', RUNNING: 'backing-up', PENDING: 'pending', CANCELLED: 'offline' };
-  return map[s] || 'offline';
+const STATUS_CLASS: Record<string, string> = {
+  SUCCESS: 'success',
+  FAILED: 'failed',
+  RUNNING: 'backing-up',
+  PENDING: 'pending',
+  CANCELLED: 'offline',
+};
+
+function formatBytes(b?: number): string {
+  if (!b || b === 0) return '0 B';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function formatDuration(sec?: number, startedAt?: string): string {
+  if (sec) {
+    const m = Math.floor(sec / 60);
+    if (m < 60) return `${m}m`;
+    const h = Math.floor(m / 60);
+    return `${h}h ${m % 60}m`;
+  }
+  if (startedAt) {
+    const elapsed = Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000);
+    return formatDuration(elapsed);
+  }
+  return '—';
 }
 
 export default function JobsPage() {
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [showTriggerModal, setShowTriggerModal] = useState(false);
+  const { data: rawJobs, loading, error, refetch } = useFetch<Job[]>(
+    () => jobsApi.list() as Promise<Job[]>,
+    [],
+    { interval: 10_000 },
+  );
+  const { jobProgress } = useSocket({ tenantId: 'current' });
 
-  const filtered = statusFilter === 'ALL' ? JOBS : JOBS.filter((j) => j.status === statusFilter);
+  const jobs = useMemo(() => {
+    if (!rawJobs) return [];
+    return rawJobs.map((j) => {
+      const live = jobProgress.get(j.id);
+      return live
+        ? {
+            ...j,
+            progress: live.progress,
+            bytesProcessed: live.bytesProcessed,
+            bytesUploaded: live.bytesUploaded,
+            status: (live.status as Job['status']) ?? j.status,
+          }
+        : j;
+    });
+  }, [rawJobs, jobProgress]);
+
+  const filtered = statusFilter === 'ALL' ? jobs : jobs.filter((j) => j.status === statusFilter);
+  const counts = useMemo(() => {
+    const map: Record<string, number> = { ALL: jobs.length };
+    for (const s of ['RUNNING', 'SUCCESS', 'FAILED', 'PENDING', 'CANCELLED']) {
+      map[s] = jobs.filter((j) => j.status === s).length;
+    }
+    return map;
+  }, [jobs]);
 
   return (
     <>
@@ -29,96 +98,249 @@ export default function JobsPage() {
         <div className="page-header-inner">
           <div>
             <h1 className="page-title">Backup Jobs</h1>
-            <p className="page-subtitle">{JOBS.length} jobs executed today</p>
+            <p className="page-subtitle">
+              {loading ? 'Loading…' : `${jobs.length} jobs`}
+              {error ? ` · ${error}` : ''}
+            </p>
           </div>
-          <button className="btn btn-primary">+ Trigger Manual Backup</button>
+          <button className="btn btn-primary" onClick={() => setShowTriggerModal(true)}>
+            + Trigger Manual Backup
+          </button>
         </div>
       </header>
 
       <div className="page-body">
         <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xl)', flexWrap: 'wrap' }}>
           {['ALL', 'RUNNING', 'SUCCESS', 'FAILED', 'PENDING', 'CANCELLED'].map((s) => (
-            <button key={s} onClick={() => setStatusFilter(s)} className="btn btn-sm" style={{
-              background: statusFilter === s ? 'var(--accent-glow)' : 'var(--bg-card)',
-              color: statusFilter === s ? 'var(--accent-primary)' : 'var(--text-secondary)',
-              border: `1px solid ${statusFilter === s ? 'var(--border-active)' : 'var(--border-default)'}`,
-              fontWeight: statusFilter === s ? 700 : 500,
-            }}>
-              {s === 'ALL' ? `All (${JOBS.length})` : `${s} (${JOBS.filter((j) => j.status === s).length})`}
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              className="btn btn-sm"
+              style={{
+                background: statusFilter === s ? 'var(--accent-glow)' : 'var(--bg-card)',
+                color: statusFilter === s ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                border: `1px solid ${statusFilter === s ? 'var(--border-active)' : 'var(--border-default)'}`,
+                fontWeight: statusFilter === s ? 700 : 500,
+              }}
+            >
+              {s === 'ALL' ? `All (${counts.ALL})` : `${s} (${counts[s] ?? 0})`}
             </button>
           ))}
         </div>
 
-        <div className="table-container">
-          <table>
-            <thead>
-              <tr>
-                <th>Agent</th>
-                <th>Policy</th>
-                <th>Type</th>
-                <th>Status</th>
-                <th>Progress</th>
-                <th>Processed</th>
-                <th>Uploaded</th>
-                <th>Duration</th>
-                <th>Trigger</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((job) => (
-                <tr key={job.id} style={{ cursor: 'pointer' }}>
-                  <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{job.agent}</td>
-                  <td style={{ fontSize: '0.8rem' }}>{job.policy}</td>
-                  <td>
-                    <span style={{
-                      padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600,
-                      background: job.type === 'IMAGE' ? 'var(--accent-glow)' : 'rgba(139, 92, 246, 0.1)',
-                      color: job.type === 'IMAGE' ? 'var(--accent-primary)' : 'var(--accent-purple)',
-                    }}>{job.type}</span>
-                  </td>
-                  <td><span className={`status-badge ${getStatusClass(job.status)}`}>{job.status}</span></td>
-                  <td>
-                    {job.status === 'RUNNING' ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '100px' }}>
-                        <div className="progress-bar" style={{ flex: 1 }}>
-                          <div className="progress-fill" style={{ width: `${job.progress}%` }}></div>
-                        </div>
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)' }}>{job.progress}%</span>
-                      </div>
-                    ) : (
-                      <span style={{ fontSize: '0.8rem' }}>{job.progress}%</span>
-                    )}
-                  </td>
-                  <td style={{ fontSize: '0.8rem' }}>{job.bytesProcessed}</td>
-                  <td style={{ fontSize: '0.8rem' }}>{job.bytesUploaded}</td>
-                  <td style={{ fontSize: '0.8rem' }}>{job.duration}</td>
-                  <td>
-                    <span style={{
-                      fontSize: '0.7rem', padding: '2px 6px', borderRadius: '4px',
-                      background: job.triggeredBy === 'manual' ? 'var(--accent-warning-glow)' : 'rgba(100, 116, 139, 0.1)',
-                      color: job.triggeredBy === 'manual' ? 'var(--accent-warning)' : 'var(--text-muted)',
-                      fontWeight: 600,
-                    }}>{job.triggeredBy}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {error && (
+          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
+            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>
+              Failed to load jobs: {error}{' '}
+              <button className="btn btn-sm btn-secondary" onClick={refetch} style={{ marginLeft: 8 }}>
+                Retry
+              </button>
+            </div>
+          </div>
+        )}
 
-        {/* Error Details for Failed Jobs */}
+        {loading && !rawJobs && (
+          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading jobs…</div>
+        )}
+
+        {!loading && jobs.length === 0 && !error && (
+          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
+            <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 8 }}>No backup jobs yet</div>
+            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Trigger a manual backup or wait for the next scheduled run.
+            </div>
+          </div>
+        )}
+
+        {jobs.length > 0 && (
+          <div className="table-container">
+            <table>
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Policy</th>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>Progress</th>
+                  <th>Processed</th>
+                  <th>Uploaded</th>
+                  <th>Duration</th>
+                  <th>Trigger</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map((job) => (
+                  <tr key={job.id} style={{ cursor: 'pointer' }}>
+                    <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {job.agentHostname ?? job.agentId.slice(0, 8)}
+                    </td>
+                    <td style={{ fontSize: '0.8rem' }}>{job.policyName ?? '—'}</td>
+                    <td>
+                      <span
+                        style={{
+                          padding: '2px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.7rem',
+                          fontWeight: 600,
+                          background: job.type === 'IMAGE' ? 'var(--accent-glow)' : 'rgba(139, 92, 246, 0.1)',
+                          color: job.type === 'IMAGE' ? 'var(--accent-primary)' : 'var(--accent-purple)',
+                        }}
+                      >
+                        {job.type}
+                      </span>
+                    </td>
+                    <td>
+                      <span className={`status-badge ${STATUS_CLASS[job.status] ?? 'offline'}`}>{job.status}</span>
+                    </td>
+                    <td>
+                      {job.status === 'RUNNING' ? (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: '100px' }}>
+                          <div className="progress-bar" style={{ flex: 1 }}>
+                            <div className="progress-fill" style={{ width: `${job.progress ?? 0}%` }}></div>
+                          </div>
+                          <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--accent-primary)' }}>
+                            {Math.round(job.progress ?? 0)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span style={{ fontSize: '0.8rem' }}>{job.progress ?? 0}%</span>
+                      )}
+                    </td>
+                    <td style={{ fontSize: '0.8rem' }}>{formatBytes(job.bytesProcessed)}</td>
+                    <td style={{ fontSize: '0.8rem' }}>{formatBytes(job.bytesUploaded)}</td>
+                    <td style={{ fontSize: '0.8rem' }}>{formatDuration(job.durationSec, job.startedAt)}</td>
+                    <td>
+                      <span
+                        style={{
+                          fontSize: '0.7rem',
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          background: job.triggeredBy === 'manual' ? 'var(--accent-warning-glow)' : 'rgba(100, 116, 139, 0.1)',
+                          color: job.triggeredBy === 'manual' ? 'var(--accent-warning)' : 'var(--text-muted)',
+                          fontWeight: 600,
+                        }}
+                      >
+                        {job.triggeredBy ?? 'schedule'}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
         {filtered.filter((j) => j.status === 'FAILED').length > 0 && (
           <div className="card" style={{ marginTop: 'var(--space-lg)', borderColor: 'rgba(239, 68, 68, 0.2)' }}>
-            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-danger)', marginBottom: 'var(--space-md)' }}>⚠️ Failed Job Details</h3>
-            {filtered.filter((j) => j.status === 'FAILED').map((job) => (
-              <div key={job.id} style={{ padding: 'var(--space-md)', background: 'var(--accent-danger-glow)', borderRadius: 'var(--radius-md)', marginBottom: 'var(--space-sm)' }}>
-                <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>{job.agent} — {job.policy}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--accent-danger)' }}>{job.errorMessage}</div>
-              </div>
-            ))}
+            <h3 style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--accent-danger)', marginBottom: 'var(--space-md)' }}>
+              ⚠️ Failed Job Details
+            </h3>
+            {filtered
+              .filter((j) => j.status === 'FAILED')
+              .map((job) => (
+                <div
+                  key={job.id}
+                  style={{
+                    padding: 'var(--space-md)',
+                    background: 'var(--accent-danger-glow)',
+                    borderRadius: 'var(--radius-md)',
+                    marginBottom: 'var(--space-sm)',
+                  }}
+                >
+                  <div style={{ fontWeight: 600, fontSize: '0.85rem', marginBottom: '4px' }}>
+                    {job.agentHostname ?? job.agentId} — {job.policyName ?? 'unknown policy'}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-danger)' }}>{job.errorMessage ?? 'Unknown error'}</div>
+                </div>
+              ))}
           </div>
         )}
       </div>
+
+      {showTriggerModal && (
+        <TriggerModal
+          onClose={() => setShowTriggerModal(false)}
+          onTriggered={() => {
+            setShowTriggerModal(false);
+            refetch();
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function TriggerModal({ onClose, onTriggered }: { onClose: () => void; onTriggered: () => void }) {
+  const { data: agents } = useFetch<any[]>(() => agentsApi.list());
+  const { data: policies } = useFetch<any[]>(() => policiesApi.list());
+  const [agentId, setAgentId] = useState('');
+  const [policyId, setPolicyId] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    if (!agentId || !policyId) {
+      setErr('Select an agent and a policy.');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      await jobsApi.trigger({ agentId, policyId });
+      onTriggered();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to trigger backup');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 480, width: '90%' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>Trigger Manual Backup</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)', marginBottom: 'var(--space-md)' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Agent</label>
+          <select value={agentId} onChange={(e) => setAgentId(e.target.value)} className="input">
+            <option value="">— Select agent —</option>
+            {(agents ?? []).map((a: any) => (
+              <option key={a.id} value={a.id}>
+                {a.displayName ?? a.hostname}
+              </option>
+            ))}
+          </select>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Policy</label>
+          <select value={policyId} onChange={(e) => setPolicyId(e.target.value)} className="input">
+            <option value="">— Select policy —</option>
+            {(policies ?? []).map((p: any) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </div>
+        {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginBottom: 'var(--space-sm)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={submit} disabled={busy}>
+            {busy ? 'Triggering…' : 'Trigger Backup'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

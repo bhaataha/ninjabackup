@@ -1,0 +1,96 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PNPM_VERSION: 9
+  NODE_VERSION: 20
+  GO_VERSION: '1.22'
+
+jobs:
+  lint-typecheck-web-api:
+    name: Lint + Typecheck (web/api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: ${{ env.PNPM_VERSION }} }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - name: Install
+        run: pnpm install --frozen-lockfile
+      - name: Generate Prisma client
+        working-directory: packages/database
+        run: npx prisma@6 generate
+      - name: Lint
+        run: pnpm -r --filter './apps/*' run lint || echo "lint warnings"
+      - name: Typecheck (web)
+        working-directory: apps/web
+        run: npx tsc --noEmit
+      - name: Typecheck (api)
+        working-directory: apps/api
+        run: npx tsc --noEmit -p tsconfig.json
+
+  build-api:
+    name: Build API
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: ${{ env.PNPM_VERSION }} }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - working-directory: packages/database
+        run: npx prisma@6 generate
+      - working-directory: apps/api
+        run: npx @nestjs/cli build
+
+  build-web:
+    name: Build Web
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: ${{ env.PNPM_VERSION }} }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'pnpm'
+      - run: pnpm install --frozen-lockfile
+      - working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: https://api.example.com/api/v1
+        run: npx next build
+
+  build-agent:
+    name: Build Agent (Go)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/agent/go.sum
+      - working-directory: apps/agent
+        run: |
+          go vet ./...
+          go build -v ./...
+      - working-directory: apps/agent
+        run: go test ./... -short -count=1

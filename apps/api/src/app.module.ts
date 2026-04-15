@@ -14,6 +14,11 @@ import { StorageModule } from './modules/storage/storage.module';
 import { AlertsModule } from './modules/alerts/alerts.module';
 import { AuditModule } from './modules/audit/audit.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
+import { ApiKeysModule } from './modules/api-keys/api-keys.module';
+import { WebhooksModule } from './modules/webhooks/webhooks.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { InstallerModule } from './modules/installer/installer.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { AuditInterceptor } from './interceptors/audit.interceptor';
 import { TenantMiddleware } from './middleware/tenant.middleware';
@@ -39,6 +44,11 @@ import { RateLimitGuard } from './guards/rate-limit.guard';
     AlertsModule,
     AuditModule,
     NotificationsModule,
+    ApiKeysModule,
+    WebhooksModule,
+    ReportsModule,
+    SettingsModule,
+    InstallerModule,
     GatewayModule,
     HealthModule,
   ],
@@ -57,7 +67,7 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantMiddleware)
-      .exclude('auth/(.*)', 'agents/register', 'agents/(.*)/heartbeat', 'health', 'health/(.*)')
+      .exclude('auth/(.*)', 'agents/register', 'agents/(.*)/heartbeat', 'health', 'health/(.*)', 'installer', 'installer/(.*)')
       .forRoutes('*');
   }
 }

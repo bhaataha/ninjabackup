@@ -145,10 +145,22 @@ export class JobsService {
     if (data.bytesProcessed !== undefined) updateData.bytesProcessed = BigInt(data.bytesProcessed);
     if (data.bytesUploaded !== undefined) updateData.bytesUploaded = BigInt(data.bytesUploaded);
 
-    return this.prisma.backupJob.update({
+    const updated = await this.prisma.backupJob.update({
       where: { id: jobId },
       data: updateData,
+      include: { agent: { select: { id: true, tenantId: true, hostname: true } } },
     });
+
+    // Broadcast progress to dashboards in this tenant.
+    this.gateway.emitJobProgress(updated.agent.tenantId, updated.id, {
+      agentId: updated.agentId,
+      progress: updated.progressPercent ?? 0,
+      bytesProcessed: Number(updated.bytesProcessed ?? 0n),
+      bytesUploaded: Number(updated.bytesUploaded ?? 0n),
+      status: updated.status,
+    });
+
+    return updated;
   }
 
   async cancelJob(tenantId: string, jobId: string) {

@@ -246,3 +246,75 @@ export const audit = {
     return request<any[]>('GET', `/audit${qs ? `?${qs}` : ''}`);
   },
 };
+
+// ─── API Keys ────────────────────────────────────────────
+
+export const apiKeys = {
+  list: () => request<any[]>('GET', '/api-keys'),
+  create: (data: { name: string; permissions: string[] }) =>
+    request<{ id: string; name: string; key: string; keyPrefix: string }>('POST', '/api-keys', data),
+  revoke: (id: string) => request<void>('DELETE', `/api-keys/${id}`),
+};
+
+// ─── Webhooks ────────────────────────────────────────────
+
+export const webhooks = {
+  list: () => request<any[]>('GET', '/webhooks'),
+  create: (data: { name: string; url: string; events: string[] }) => request<any>('POST', '/webhooks', data),
+  update: (id: string, data: any) => request<any>('PATCH', `/webhooks/${id}`, data),
+  delete: (id: string) => request<void>('DELETE', `/webhooks/${id}`),
+  test: (id: string) => request<{ success: boolean; status: number; durationMs: number }>('POST', `/webhooks/${id}/test`),
+  deliveries: (webhookId?: string) =>
+    request<any[]>('GET', `/webhooks/deliveries${webhookId ? `?webhookId=${webhookId}` : ''}`),
+};
+
+// ─── Reports ─────────────────────────────────────────────
+
+export const reports = {
+  summary: (params?: { from?: string; to?: string }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return request<any>('GET', `/reports/summary${qs ? `?${qs}` : ''}`);
+  },
+  storageUsage: () => request<any>('GET', '/reports/storage-usage'),
+  agentActivity: () => request<any>('GET', '/reports/agent-activity'),
+  successRate: (days?: number) =>
+    request<{ labels: string[]; values: number[]; rate: number }>('GET', `/reports/success-rate?days=${days ?? 14}`),
+  exportPdf: (kind: 'summary' | 'storage' | 'agents' | 'compliance') =>
+    request<{ url: string }>('POST', `/reports/${kind}/export`),
+};
+
+// ─── Notifications ───────────────────────────────────────
+
+export const notifications = {
+  list: () => request<any[]>('GET', '/notifications'),
+  markRead: (id: string) => request<void>('POST', `/notifications/${id}/read`),
+  markAllRead: () => request<void>('POST', '/notifications/read-all'),
+  unreadCount: () => request<{ count: number }>('GET', '/notifications/unread-count'),
+};
+
+// ─── Snapshot file browse / versions ─────────────────────
+
+export const files = {
+  versions: (snapshotId: string, path: string) =>
+    request<any[]>('GET', `/snapshots/${snapshotId}/versions?path=${encodeURIComponent(path)}`),
+  download: (snapshotId: string, path: string) =>
+    request<{ url: string; expiresAt: string }>('POST', `/snapshots/${snapshotId}/download`, { path }),
+};
+
+// ─── Agent installer downloads ───────────────────────────
+
+export const installer = {
+  list: () =>
+    request<
+      { platform: string; arch: string; version: string; url: string; sha256: string; sizeBytes: number }[]
+    >('GET', '/installer'),
+  installScript: (platform: 'windows' | 'linux' | 'macos') =>
+    request<{ script: string }>('GET', `/installer/script?platform=${platform}`),
+};
+
+// ─── Settings ────────────────────────────────────────────
+
+export const settings = {
+  get: () => request<any>('GET', '/settings'),
+  update: (data: any) => request<any>('PATCH', '/settings', data),
+};

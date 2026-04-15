@@ -1,64 +1,93 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
+import { useFetch } from '@/hooks/useFetch';
+import { installer as installerApi, agents as agentsApi } from '@/lib/api';
 
-const PLATFORMS = [
-  {
-    os: 'Windows',
+type Installer = {
+  platform: string;
+  arch: string;
+  version: string;
+  url: string;
+  sha256: string;
+  sizeBytes: number;
+};
+
+const PLATFORM_META: Record<string, { icon: string; color: string; instructions: (token: string) => string[] }> = {
+  windows: {
     icon: '🪟',
-    arch: ['x64'],
-    size: '8.3 MB',
-    installer: 'NinjaBackup-Agent-Setup-1.0.0.exe',
     color: '#3b82f6',
-    instructions: [
-      'Download and run the installer',
-      'Enter your server URL and registration token',
-      'The agent will install as a Windows service and start automatically',
+    instructions: (token) => [
+      'Download and run the installer.',
+      `Enter your server URL and registration token: ${token || '<generate token first>'}`,
+      'The agent will install as a Windows service and start automatically.',
     ],
   },
-  {
-    os: 'Linux',
+  linux: {
     icon: '🐧',
-    arch: ['x64', 'arm64'],
-    size: '7.1 MB',
-    installer: 'ninjabackup-agent-1.0.0-linux',
     color: '#f59e0b',
-    instructions: [
-      'Download the binary: curl -LO https://...',
+    instructions: (token) => [
+      'Download the binary: curl -LO <download URL>',
       'chmod +x ninjabackup-agent && sudo mv ninjabackup-agent /usr/local/bin/',
-      'Register: sudo ninjabackup-agent --register TOKEN --server URL',
+      `Register: sudo ninjabackup-agent --register ${token || '<TOKEN>'} --server <SERVER_URL>`,
       'Install: sudo ninjabackup-agent --install',
     ],
   },
-  {
-    os: 'macOS',
+  macos: {
     icon: '🍎',
-    arch: ['arm64 (Apple Silicon)', 'x64 (Intel)'],
-    size: '7.8 MB',
-    installer: 'ninjabackup-agent-1.0.0-darwin',
     color: '#8b5cf6',
-    instructions: [
-      'Download the binary for your architecture',
+    instructions: (token) => [
+      'Download the binary for your architecture (Apple Silicon or Intel).',
       'chmod +x ninjabackup-agent && sudo mv ninjabackup-agent /usr/local/bin/',
-      'Register: sudo ninjabackup-agent --register TOKEN --server URL',
+      `Register: sudo ninjabackup-agent --register ${token || '<TOKEN>'} --server <SERVER_URL>`,
       'Install: sudo ninjabackup-agent --install',
     ],
   },
-];
+};
+
+function formatBytes(b: number) {
+  if (!b) return '—';
+  const k = 1024;
+  const sizes = ['B', 'KB', 'MB'];
+  const i = Math.floor(Math.log(b) / Math.log(k));
+  return parseFloat((b / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
 
 export default function DownloadPage() {
-  const [selected, setSelected] = useState('Windows');
+  const { data: installersData, loading, error } = useFetch<Installer[]>(() => installerApi.list() as Promise<Installer[]>);
+  const [selected, setSelected] = useState<'windows' | 'linux' | 'macos'>('windows');
   const [token, setToken] = useState('');
   const [showToken, setShowToken] = useState(false);
+  const [tokenLoading, setTokenLoading] = useState(false);
 
-  const platform = PLATFORMS.find(p => p.os === selected)!;
+  const installers = installersData ?? [];
 
-  const generateToken = () => {
-    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-    const token = Array.from({ length: 32 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-    setToken(token);
-    setShowToken(true);
-  };
+  const grouped = useMemo(() => {
+    const m = new Map<string, Installer[]>();
+    for (const i of installers) {
+      const list = m.get(i.platform.toLowerCase()) ?? [];
+      list.push(i);
+      m.set(i.platform.toLowerCase(), list);
+    }
+    return m;
+  }, [installers]);
+
+  const platforms = Array.from(grouped.keys());
+  const current = grouped.get(selected) ?? [];
+  const meta = PLATFORM_META[selected];
+
+  async function generateToken() {
+    setTokenLoading(true);
+    try {
+      const r = await agentsApi.createToken();
+      setToken(r.token);
+      setShowToken(true);
+    } catch (e: any) {
+      alert(`Failed: ${e?.message ?? 'unknown'}`);
+    } finally {
+      setTokenLoading(false);
+    }
+  }
 
   return (
     <>
@@ -72,112 +101,187 @@ export default function DownloadPage() {
       </header>
 
       <div className="page-body">
-        {/* Platform Selector */}
-        <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-xl)' }}>
-          {PLATFORMS.map(p => (
-            <button
-              key={p.os}
-              onClick={() => setSelected(p.os)}
-              className="card"
-              style={{
-                flex: 1, cursor: 'pointer', textAlign: 'center',
-                borderColor: selected === p.os ? p.color : undefined,
-                boxShadow: selected === p.os ? `0 0 24px ${p.color}15, inset 0 0 16px ${p.color}08` : undefined,
-                transition: 'all var(--transition-base)',
-              }}
-            >
-              <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>{p.icon}</div>
-              <div style={{ fontWeight: 700, fontSize: '1rem' }}>{p.os}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{p.arch.join(' / ')}</div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>{p.size}</div>
-            </button>
-          ))}
-        </div>
+        {error && (
+          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
+            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
+          </div>
+        )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-lg)' }}>
-          {/* Download Card */}
-          <div className="card">
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span style={{ fontSize: '1.3rem' }}>{platform.icon}</span>
-              {platform.os} Agent v1.0.0
-            </h3>
-
-            <button className="btn btn-primary" style={{
-              width: '100%', justifyContent: 'center', padding: '16px', fontSize: '1rem', marginBottom: 'var(--space-lg)',
-            }}>
-              ⬇️ Download {platform.installer}
-            </button>
-
-            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              <div style={{ fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '8px' }}>SHA-256 Checksum:</div>
-              <code style={{
-                display: 'block', padding: '10px', background: 'var(--bg-input)',
-                borderRadius: 'var(--radius-sm)', fontSize: '0.72rem', wordBreak: 'break-all',
-                fontFamily: 'monospace', border: '1px solid var(--border-glass)',
-              }}>
-                e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-              </code>
+        {loading && installers.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading installers…</div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-xl)' }}>
+              {(platforms.length > 0 ? platforms : ['windows', 'linux', 'macos']).map((p) => {
+                const m = PLATFORM_META[p];
+                if (!m) return null;
+                const archs = (grouped.get(p) ?? []).map((i) => i.arch).join(' / ') || 'x64';
+                return (
+                  <button
+                    key={p}
+                    onClick={() => setSelected(p as any)}
+                    className="card"
+                    style={{
+                      flex: 1,
+                      cursor: 'pointer',
+                      textAlign: 'center',
+                      borderColor: selected === p ? m.color : undefined,
+                      boxShadow: selected === p ? `0 0 24px ${m.color}15, inset 0 0 16px ${m.color}08` : undefined,
+                      transition: 'all var(--transition-base)',
+                    }}
+                  >
+                    <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>{m.icon}</div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem', textTransform: 'capitalize' }}>{p}</div>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{archs}</div>
+                  </button>
+                );
+              })}
             </div>
-          </div>
 
-          {/* Registration Token */}
-          <div className="card">
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>🔑 Registration Token</h3>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-lg)' }}>
+              <div className="card">
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>
+                  {meta?.icon} {selected.charAt(0).toUpperCase() + selected.slice(1)} Agent
+                </h3>
 
-            <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', lineHeight: 1.6 }}>
-              Generate a one-time token to register the agent with this tenant. The token expires in 24 hours.
-            </p>
-
-            {showToken ? (
-              <div style={{ marginBottom: 'var(--space-lg)' }}>
-                <div style={{
-                  padding: '14px', background: 'var(--bg-input)', borderRadius: 'var(--radius-md)',
-                  border: '1px solid var(--border-active)', fontFamily: 'monospace', fontSize: '0.85rem',
-                  fontWeight: 600, color: 'var(--accent-primary)', letterSpacing: '0.02em',
-                  wordBreak: 'break-all',
-                }}>{token}</div>
-                <button className="btn btn-secondary btn-sm" style={{ marginTop: 'var(--space-sm)', width: '100%', justifyContent: 'center' }}
-                  onClick={() => navigator.clipboard.writeText(token)}>
-                  📋 Copy Token
-                </button>
+                {current.length === 0 ? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                    No installer available for this platform yet. Build artifacts will appear here once the CI pipeline publishes them.
+                  </div>
+                ) : (
+                  current.map((inst) => (
+                    <div key={inst.arch + inst.url} style={{ marginBottom: 'var(--space-md)' }}>
+                      <a
+                        href={inst.url}
+                        className="btn btn-primary"
+                        style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: '0.95rem', textDecoration: 'none', display: 'block' }}
+                      >
+                        ⬇️ Download {inst.arch} ({formatBytes(inst.sizeBytes)})
+                      </a>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        Version v{inst.version}
+                      </div>
+                      <code
+                        style={{
+                          display: 'block',
+                          padding: '8px',
+                          background: 'var(--bg-input)',
+                          borderRadius: 'var(--radius-sm)',
+                          fontSize: '0.7rem',
+                          wordBreak: 'break-all',
+                          fontFamily: 'monospace',
+                          border: '1px solid var(--border-glass)',
+                          marginTop: '6px',
+                        }}
+                      >
+                        sha256: {inst.sha256}
+                      </code>
+                    </div>
+                  ))
+                )}
               </div>
-            ) : (
-              <button className="btn btn-primary" onClick={generateToken} style={{ width: '100%', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}>
-                🔑 Generate Token
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/* Installation Steps */}
-        <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
-          <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>📋 Installation Steps — {platform.os}</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {platform.instructions.map((step, i) => (
-              <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-                <div style={{
-                  width: '28px', height: '28px', borderRadius: '50%', flexShrink: 0,
-                  background: 'var(--accent-glow)', border: '1px solid var(--border-active)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontWeight: 700, fontSize: '0.75rem', color: 'var(--accent-primary)',
-                }}>{i + 1}</div>
-                <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', paddingTop: '4px', lineHeight: 1.5 }}>
-                  {step.includes(':') && step.includes('--') ? (
-                    <>
-                      {step.split(':')[0]}:
-                      <code style={{
-                        display: 'block', marginTop: '6px', padding: '8px 12px',
-                        background: 'var(--bg-input)', borderRadius: 'var(--radius-sm)',
-                        fontSize: '0.78rem', fontFamily: 'monospace', color: 'var(--accent-cyan, #06b6d4)',
-                        border: '1px solid var(--border-glass)',
-                      }}>{step.split(':').slice(1).join(':').trim()}</code>
-                    </>
-                  ) : step}
+              <div className="card">
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>🔑 Registration Token</h3>
+                <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', lineHeight: 1.6 }}>
+                  Generate a one-time token to register the agent with this tenant. Tokens expire in 24 hours.
+                </p>
+
+                {showToken ? (
+                  <div style={{ marginBottom: 'var(--space-lg)' }}>
+                    <div
+                      style={{
+                        padding: '14px',
+                        background: 'var(--bg-input)',
+                        borderRadius: 'var(--radius-md)',
+                        border: '1px solid var(--border-active)',
+                        fontFamily: 'monospace',
+                        fontSize: '0.85rem',
+                        fontWeight: 600,
+                        color: 'var(--accent-primary)',
+                        wordBreak: 'break-all',
+                      }}
+                    >
+                      {token}
+                    </div>
+                    <button
+                      className="btn btn-secondary btn-sm"
+                      style={{ marginTop: 'var(--space-sm)', width: '100%', justifyContent: 'center' }}
+                      onClick={() => navigator.clipboard.writeText(token)}
+                    >
+                      📋 Copy Token
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    className="btn btn-primary"
+                    onClick={generateToken}
+                    disabled={tokenLoading}
+                    style={{ width: '100%', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}
+                  >
+                    🔑 {tokenLoading ? 'Generating…' : 'Generate Token'}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {meta && (
+              <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)', textTransform: 'capitalize' }}>
+                  📋 Installation Steps — {selected}
+                </h3>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {meta.instructions(token).map((step, i) => (
+                    <div key={i} style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+                      <div
+                        style={{
+                          width: '28px',
+                          height: '28px',
+                          borderRadius: '50%',
+                          flexShrink: 0,
+                          background: 'var(--accent-glow)',
+                          border: '1px solid var(--border-active)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.75rem',
+                          color: 'var(--accent-primary)',
+                        }}
+                      >
+                        {i + 1}
+                      </div>
+                      <div style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', paddingTop: '4px', lineHeight: 1.5 }}>
+                        {step.includes(':') && step.includes('--') ? (
+                          <>
+                            {step.split(':')[0]}:
+                            <code
+                              style={{
+                                display: 'block',
+                                marginTop: '6px',
+                                padding: '8px 12px',
+                                background: 'var(--bg-input)',
+                                borderRadius: 'var(--radius-sm)',
+                                fontSize: '0.78rem',
+                                fontFamily: 'monospace',
+                                color: '#06b6d4',
+                                border: '1px solid var(--border-glass)',
+                              }}
+                            >
+                              {step.split(':').slice(1).join(':').trim()}
+                            </code>
+                          </>
+                        ) : (
+                          step
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+            )}
+          </>
+        )}
       </div>
     </>
   );

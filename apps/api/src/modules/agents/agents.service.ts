@@ -8,10 +8,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterAgentDto } from './dto/register-agent.dto';
 import { UpdateAgentDto } from './dto/update-agent.dto';
 import { randomBytes } from 'crypto';
+import { EventsGateway } from '../../gateway/events.gateway';
 
 @Injectable()
 export class AgentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: EventsGateway,
+  ) {}
 
   /**
    * Generate a one-time registration token for a new agent.
@@ -222,15 +226,24 @@ export class AgentsService {
       diskInfo?: any;
     },
   ) {
-    return this.prisma.agent.update({
+    const existing = await this.prisma.agent.findUnique({ where: { id: agentId } });
+    const newStatus = (data.status as any) || 'ONLINE';
+    const updated = await this.prisma.agent.update({
       where: { id: agentId },
       data: {
         lastSeen: new Date(),
-        status: (data.status as any) || 'ONLINE',
+        status: newStatus,
         agentVersion: data.agentVersion,
         diskInfo: data.diskInfo,
       },
     });
+
+    // Broadcast on status transitions only — avoids spamming dashboards.
+    if (existing && existing.status !== newStatus && this.gateway) {
+      this.gateway.emitAgentStatus(updated.tenantId, updated.id, newStatus);
+    }
+
+    return updated;
   }
 
   /**
