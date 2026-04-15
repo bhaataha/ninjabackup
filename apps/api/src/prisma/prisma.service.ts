@@ -1,5 +1,7 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
-import { PrismaClient } from '@ninjabackup/database';
+// Import PrismaClient directly from the generated client — avoids the
+// @ninjabackup/database workspace package pointing at raw TS source.
+import { PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService

@@ -50,31 +50,13 @@ COPY --from=builder /app/packages/database/prisma ./prisma
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-workspace.yaml
 
-# Boot script — additive schema sync + keep container alive on Nest crash
-# so we can read logs via `docker logs` / Coolify get_logs.
+# Boot script — additive schema sync, then exec Node
 COPY <<'EOF' /app/start.sh
 #!/bin/sh
 set -u
-echo "[boot] ======================================="
-echo "[boot] NinjaBackup API starting at $(date -u)"
-echo "[boot] PWD=$(pwd)"
-echo "[boot] NODE_ENV=${NODE_ENV:-}"
-echo "[boot] PORT=${PORT:-}"
-echo "[boot] DATABASE_URL host=$(echo "${DATABASE_URL:-}" | sed 's|.*@\([^:]*\):.*|\1|')"
-echo "[boot] node_modules @nestjs/core: $(ls -la node_modules/@nestjs/core/package.json 2>&1 | head -1)"
-echo "[boot] ======================================="
-
-echo "[boot] Running prisma db push --accept-data-loss..."
-prisma db push --schema ./prisma/schema.prisma --skip-generate --accept-data-loss
-PRISMA_EXIT=$?
-echo "[boot] prisma exit=$PRISMA_EXIT"
-
-echo "[boot] Starting node dist/main ..."
-node dist/main
-NODE_EXIT=$?
-echo "[boot] node exited with $NODE_EXIT — staying alive 120s for log inspection"
-sleep 120
-exit $NODE_EXIT
+echo "[boot] NinjaBackup API starting at $(date -u) on :${PORT:-3038}"
+prisma db push --schema ./prisma/schema.prisma --skip-generate --accept-data-loss 2>&1 || echo "[boot] prisma db push failed — continuing"
+exec node dist/main
 EOF
 RUN chmod +x /app/start.sh
 
