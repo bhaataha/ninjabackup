@@ -25,27 +25,28 @@ COPY apps/api/ ./apps/api/
 RUN cd apps/api && npx @nestjs/cli build
 
 # ── Stage 4: Bundle for production ──
-# Use pnpm deploy to create a self-contained directory with all deps.
-# Run from workspace root with --filter; pnpm 9 requires explicit project selection.
+# `pnpm --filter ... deploy` creates a self-contained directory at /app/bundle
+# with prod deps only. `@prisma/client` ships its package, but the generated
+# `.prisma/client` artifacts live next to whichever copy of @prisma/client
+# pnpm hoisted — we regenerate from the schema in this stage to guarantee they
+# end up alongside the bundle's @prisma/client.
 FROM builder AS bundler
 RUN pnpm --filter @ninjabackup/api deploy --prod /app/bundle
-
-# Copy Prisma generated client into bundle
-RUN cp -r /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client /app/bundle/node_modules/@prisma/client
-RUN cp -r /app/node_modules/.pnpm/@prisma+client*/node_modules/.prisma /app/bundle/node_modules/.prisma
+COPY packages/database/prisma /app/bundle/prisma
+RUN cd /app/bundle && npx prisma@6 generate --schema=./prisma/schema.prisma
 
 # ── Stage 5: Runner ──
 FROM node:20-alpine AS runner
 WORKDIR /app
 
-# Copy self-contained bundle (no symlinks)
+# Copy self-contained bundle (no symlinks, prisma client included)
 COPY --from=bundler /app/bundle/node_modules ./node_modules
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=bundler /app/bundle/package.json ./package.json
-COPY --from=builder /app/packages/database/prisma ./prisma
+COPY --from=bundler /app/bundle/prisma ./prisma
 
 # Verify runtime deps
-RUN node -e "const { PrismaClient } = require('@prisma/client'); console.log('PrismaClient OK')"
+RUN node -e "const { PrismaClient } = require('@prisma/client'); new PrismaClient(); console.log('PrismaClient OK')"
 
 ENV NODE_ENV=production
 ENV PORT=3038
