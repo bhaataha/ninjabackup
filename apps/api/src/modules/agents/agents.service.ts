@@ -234,6 +234,15 @@ export class AgentsService {
   }
 
   /**
+   * Verify an agent exists (used by unauthenticated agent endpoints).
+   */
+  async ensureExists(agentId: string) {
+    const agent = await this.prisma.agent.findUnique({ where: { id: agentId } });
+    if (!agent) throw new NotFoundException('Agent not found');
+    return agent;
+  }
+
+  /**
    * Decommission (soft-delete) an agent.
    */
   async remove(tenantId: string, agentId: string) {

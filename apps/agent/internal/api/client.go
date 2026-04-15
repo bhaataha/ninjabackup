@@ -189,7 +189,21 @@ func (c *Client) UpdateJobStatus(jobID string, update JobStatusUpdate) error {
 
 // FetchPolicies gets the assigned policies from the server
 func (c *Client) FetchPolicies(agentID string) ([]BackupPolicy, error) {
-	// TODO: Implement when API endpoint is ready
-	// For now, return policies from local config
-	return nil, nil
+	url := fmt.Sprintf("%s/agents/%s/policies", c.baseURL, agentID)
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("fetch policies: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("fetch policies (HTTP %d): %s", resp.StatusCode, string(body))
+	}
+
+	var policies []BackupPolicy
+	if err := json.NewDecoder(resp.Body).Decode(&policies); err != nil {
+		return nil, fmt.Errorf("decode policies: %w", err)
+	}
+	return policies, nil
 }

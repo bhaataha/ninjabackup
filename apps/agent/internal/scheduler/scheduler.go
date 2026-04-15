@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -8,6 +9,7 @@ import (
 	"github.com/ninjabackup/agent/internal/api"
 	"github.com/ninjabackup/agent/internal/config"
 	"github.com/ninjabackup/agent/internal/restic"
+	"github.com/robfig/cron/v3"
 )
 
 // Scheduler manages scheduled backup jobs
@@ -17,15 +19,21 @@ type Scheduler struct {
 	restic *restic.Engine
 	stop   chan struct{}
 	wg     sync.WaitGroup
+
+	mu     sync.Mutex
+	cron   *cron.Cron
+	// policyID -> cron entry ID, so we can rebuild the schedule when policies change
+	entries map[string]cron.EntryID
 }
 
 // New creates a new scheduler
 func New(cfg *config.Config, apiClient *api.Client, resticEngine *restic.Engine) *Scheduler {
 	return &Scheduler{
-		cfg:    cfg,
-		api:    apiClient,
-		restic: resticEngine,
-		stop:   make(chan struct{}),
+		cfg:     cfg,
+		api:     apiClient,
+		restic:  resticEngine,
+		stop:    make(chan struct{}),
+		entries: make(map[string]cron.EntryID),
 	}
 }
 
@@ -35,17 +43,24 @@ func (s *Scheduler) Start() {
 	s.wg.Add(1)
 	defer s.wg.Done()
 
-	// Check for pending jobs every 30 seconds
-	ticker := time.NewTicker(30 * time.Second)
+	s.cron = cron.New()
+	s.cron.Start()
+	defer s.cron.Stop()
+
+	// Refresh policies from server every 2 minutes
+	ticker := time.NewTicker(2 * time.Minute)
 	defer ticker.Stop()
 
-	// Also run an initial check immediately
-	s.checkAndRunJobs()
+	if err := s.refreshPolicies(); err != nil {
+		log.Printf("Initial policy refresh failed: %v", err)
+	}
 
 	for {
 		select {
 		case <-ticker.C:
-			s.checkAndRunJobs()
+			if err := s.refreshPolicies(); err != nil {
+				log.Printf("Policy refresh failed: %v", err)
+			}
 		case <-s.stop:
 			log.Println("Scheduler stopped")
 			return
@@ -59,15 +74,56 @@ func (s *Scheduler) Stop() {
 	s.wg.Wait()
 }
 
-func (s *Scheduler) checkAndRunJobs() {
-	// If no backup paths configured, skip
-	if len(s.cfg.BackupPaths) == 0 {
-		return
+// refreshPolicies fetches current policies from the server and reconciles
+// them with the running cron schedule.
+func (s *Scheduler) refreshPolicies() error {
+	policies, err := s.api.FetchPolicies(s.cfg.AgentID)
+	if err != nil {
+		return err
 	}
 
-	// For MVP: run backup if paths are configured
-	// TODO: Fetch policies from server and use cron scheduling
-	log.Println("Checking for backup jobs...")
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	seen := make(map[string]struct{}, len(policies))
+	for _, p := range policies {
+		seen[p.ID] = struct{}{}
+		if _, exists := s.entries[p.ID]; exists {
+			continue // already scheduled
+		}
+
+		policy := p // capture for closure
+		id, err := s.cron.AddFunc(policy.ScheduleCron, func() {
+			s.runPolicy(policy)
+		})
+		if err != nil {
+			log.Printf("Invalid cron '%s' for policy %s: %v", policy.ScheduleCron, policy.Name, err)
+			continue
+		}
+		s.entries[p.ID] = id
+		log.Printf("Scheduled policy '%s' (%s) with cron '%s'", policy.Name, policy.ID, policy.ScheduleCron)
+	}
+
+	// Remove cron entries whose policy is no longer assigned
+	for policyID, entryID := range s.entries {
+		if _, stillAssigned := seen[policyID]; !stillAssigned {
+			s.cron.Remove(entryID)
+			delete(s.entries, policyID)
+			log.Printf("Unscheduled policy %s", policyID)
+		}
+	}
+
+	return nil
+}
+
+// runPolicy executes a policy's backup on schedule.
+func (s *Scheduler) runPolicy(p api.BackupPolicy) {
+	jobID := fmt.Sprintf("scheduled-%s-%d", p.ID, time.Now().Unix())
+	log.Printf("Cron fired for policy '%s' — starting backup %s", p.Name, jobID)
+
+	if err := s.RunBackup(jobID, p.IncludePaths, p.ExcludePatterns); err != nil {
+		log.Printf("Scheduled backup failed for policy %s: %v", p.Name, err)
+	}
 }
 
 // RunBackup executes a backup job and reports progress to the server
@@ -82,7 +138,6 @@ func (s *Scheduler) RunBackup(jobID string, paths []string, excludes []string) e
 
 	// Run the backup with progress reporting
 	result, err := s.restic.Backup(paths, excludes, []string{jobID}, func(progress restic.ResticProgress) {
-		// Report progress to server
 		s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
 			BytesProcessed:  progress.BytesDone,
 			ProgressPercent: progress.PercentDone * 100,
@@ -90,7 +145,6 @@ func (s *Scheduler) RunBackup(jobID string, paths []string, excludes []string) e
 	})
 
 	if err != nil {
-		// Report failure
 		s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
 			Status:       "FAILED",
 			ErrorMessage: err.Error(),
@@ -99,14 +153,13 @@ func (s *Scheduler) RunBackup(jobID string, paths []string, excludes []string) e
 		return err
 	}
 
-	// Report success
 	s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
-		Status:         "SUCCESS",
-		BytesProcessed: result.BytesTotal,
-		BytesUploaded:  result.BytesAdded,
-		FilesNew:       result.FilesNew,
-		FilesChanged:   result.FilesChanged,
-		FilesUnchanged: result.FilesUnchanged,
+		Status:          "SUCCESS",
+		BytesProcessed:  result.BytesTotal,
+		BytesUploaded:   result.BytesAdded,
+		FilesNew:        result.FilesNew,
+		FilesChanged:    result.FilesChanged,
+		FilesUnchanged:  result.FilesUnchanged,
 		ProgressPercent: 100,
 	})
 

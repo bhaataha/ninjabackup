@@ -1,9 +1,13 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { EventsGateway } from '../../gateway/events.gateway';
 
 @Injectable()
 export class JobsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly gateway: EventsGateway,
+  ) {}
 
   async findAll(
     tenantId: string,
@@ -62,8 +66,20 @@ export class JobsService {
    * Trigger a manual backup job for an agent.
    */
   async triggerBackup(tenantId: string, agentId: string, policyId?: string, type: string = 'FILE') {
-    const agent = await this.prisma.agent.findFirst({ where: { id: agentId, tenantId } });
+    const agent = await this.prisma.agent.findFirst({
+      where: { id: agentId, tenantId },
+      include: { agentPolicies: { include: { policy: true } } },
+    });
     if (!agent) throw new NotFoundException('Agent not found');
+
+    let policy: any = null;
+    if (policyId) {
+      policy = await this.prisma.backupPolicy.findFirst({
+        where: { id: policyId, tenantId },
+        include: { storageVault: true },
+      });
+      if (!policy) throw new NotFoundException('Policy not found');
+    }
 
     const job = await this.prisma.backupJob.create({
       data: {
@@ -75,7 +91,15 @@ export class JobsService {
       },
     });
 
-    // TODO: Send command to agent via WebSocket
+    this.gateway.sendAgentCommand(agentId, 'backup:start', {
+      jobId: job.id,
+      type,
+      policyId: policy?.id ?? null,
+      includePaths: policy?.includePaths ?? [],
+      excludePatterns: policy?.excludePatterns ?? [],
+      bandwidthLimitMbps: policy?.bandwidthLimitMbps ?? 0,
+      vssEnabled: policy?.vssEnabled ?? false,
+    });
 
     return job;
   }
@@ -131,7 +155,7 @@ export class JobsService {
       data: { status: 'CANCELLED', completedAt: new Date() },
     });
 
-    // TODO: Send cancel command to agent via WebSocket
+    this.gateway.sendAgentCommand(job.agentId, 'backup:cancel', { jobId });
 
     return { cancelled: true };
   }

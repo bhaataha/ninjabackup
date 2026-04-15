@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AgentsService } from './agents.service';
+import { PoliciesService } from '../policies/policies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Roles } from '../auth/decorators/roles.decorator';
@@ -21,7 +22,10 @@ import { UpdateAgentDto } from './dto/update-agent.dto';
 @ApiTags('agents')
 @Controller('agents')
 export class AgentsController {
-  constructor(private readonly agentsService: AgentsService) {}
+  constructor(
+    private readonly agentsService: AgentsService,
+    private readonly policiesService: PoliciesService,
+  ) {}
 
   @Post('token')
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -97,6 +101,13 @@ export class AgentsController {
     @Body() data: { status?: string; agentVersion?: string; diskInfo?: any },
   ) {
     return this.agentsService.heartbeat(id, data);
+  }
+
+  @Get(':id/policies')
+  @ApiOperation({ summary: 'Get assigned policies for an agent (called by agent runtime)' })
+  async getAgentPolicies(@Param('id') id: string) {
+    await this.agentsService.ensureExists(id);
+    return this.policiesService.findForAgent(id);
   }
 
   @Delete(':id')

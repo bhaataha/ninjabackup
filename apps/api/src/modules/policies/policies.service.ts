@@ -71,4 +71,56 @@ export class PoliciesService {
     });
     return { unassigned: true };
   }
+
+  /**
+   * Return enabled policies assigned to an agent, shaped for the agent runtime
+   * (no encrypted credentials, only fields the agent needs to schedule + run).
+   */
+  async findForAgent(agentId: string) {
+    const rows = await this.prisma.agentPolicy.findMany({
+      where: { agentId, policy: { enabled: true } },
+      include: {
+        policy: {
+          include: {
+            storageVault: {
+              select: { id: true, type: true, endpoint: true, bucket: true, region: true, prefix: true },
+            },
+          },
+        },
+      },
+    });
+
+    return rows.map((row) => {
+      const p = row.policy;
+      return {
+        id: p.id,
+        name: p.name,
+        type: p.type,
+        scheduleCron: p.scheduleCron,
+        enabled: p.enabled,
+        includePaths: p.includePaths,
+        excludePatterns: p.excludePatterns,
+        retentionHourly: p.retentionHourly,
+        retentionDaily: p.retentionDaily,
+        retentionWeekly: p.retentionWeekly,
+        retentionMonthly: p.retentionMonthly,
+        retentionYearly: p.retentionYearly,
+        retentionLast: p.retentionLast,
+        bandwidthLimitMbps: p.bandwidthLimitMbps ?? 0,
+        cpuPriority: p.cpuPriority,
+        compressionEnabled: p.compressionEnabled,
+        vssEnabled: p.vssEnabled,
+        storageVault: p.storageVault
+          ? {
+              id: p.storageVault.id,
+              type: p.storageVault.type,
+              endpoint: p.storageVault.endpoint,
+              bucket: p.storageVault.bucket,
+              region: p.storageVault.region,
+              prefix: p.storageVault.prefix,
+            }
+          : null,
+      };
+    });
+  }
 }

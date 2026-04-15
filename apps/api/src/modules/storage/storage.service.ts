@@ -4,6 +4,7 @@ import { CreateStorageVaultDto } from './dto/create-storage-vault.dto';
 import { UpdateStorageVaultDto } from './dto/update-storage-vault.dto';
 import { createCipheriv, createDecipheriv, randomBytes } from 'crypto';
 import { ConfigService } from '@nestjs/config';
+import { S3Client, HeadBucketCommand } from '@aws-sdk/client-s3';
 
 @Injectable()
 export class StorageService {
@@ -114,13 +115,44 @@ export class StorageService {
     });
     if (!vault) throw new NotFoundException('Storage vault not found');
 
-    // TODO: Actually test S3 connection using the decrypted credentials
-    // For now, return a mock success
-    return {
-      success: true,
-      message: 'Connection test passed',
-      latencyMs: 45,
-    };
+    const { accessKey, secretKey } = this.getDecryptedCredentials(vault);
+    if (!accessKey || !secretKey) {
+      return { success: false, message: 'Credentials not configured' };
+    }
+    if (!vault.bucket) {
+      return { success: false, message: 'Bucket not configured' };
+    }
+
+    const client = new S3Client({
+      region: vault.region || 'us-east-1',
+      endpoint: vault.endpoint || undefined,
+      // path-style addressing is required for MinIO and most non-AWS S3 providers
+      forcePathStyle: vault.type !== 'S3',
+      credentials: { accessKeyId: accessKey, secretAccessKey: secretKey },
+    });
+
+    const start = Date.now();
+    try {
+      await client.send(new HeadBucketCommand({ Bucket: vault.bucket }));
+      const latencyMs = Date.now() - start;
+
+      await this.prisma.storageVault.update({
+        where: { id: vault.id },
+        data: { lastCheckedAt: new Date() },
+      });
+
+      return { success: true, message: 'Connection test passed', latencyMs };
+    } catch (err: any) {
+      return {
+        success: false,
+        message: err?.name
+          ? `${err.name}: ${err.message}`
+          : err?.message || 'Connection failed',
+        latencyMs: Date.now() - start,
+      };
+    } finally {
+      client.destroy();
+    }
   }
 
   async getUsage(tenantId: string, id: string) {
