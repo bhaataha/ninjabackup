@@ -27,29 +27,30 @@ RUN cd apps/api && npx @nestjs/cli build
 
 # ── Stage 4: Production Runner ──
 FROM node:20-alpine AS runner
-WORKDIR /app
 
-# Install prisma CLI globally so `prisma db push` runs without npx download prompts
+# Global prisma CLI for schema sync at boot (no npx TTY prompt)
 RUN npm i -g prisma@6
 
-# Copy ALL node_modules (includes pnpm workspace symlinks for @ninjabackup/database)
-COPY --from=builder /app/node_modules ./node_modules
+# Work from the app dir so Node's module resolution walks up to
+# /app/apps/api/node_modules (pnpm workspace) then /app/node_modules
+WORKDIR /app/apps/api
 
-# Copy the database package (needed at runtime for @ninjabackup/database imports)
-COPY --from=builder /app/packages/database ./packages/database
-
-# Copy built API
+# Workspace node_modules — the .pnpm virtual store lives here
+COPY --from=builder /app/node_modules /app/node_modules
+# App-specific node_modules — symlinks into the store for deps listed in apps/api/package.json
+COPY --from=builder /app/apps/api/node_modules /app/apps/api/node_modules
+# Workspace package (required so @ninjabackup/database symlink resolves)
+COPY --from=builder /app/packages/database /app/packages/database
+# Built API
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json ./
-
-# Copy prisma schema (for potential migrations)
+# Prisma schema accessible at ./prisma
 COPY --from=builder /app/packages/database/prisma ./prisma
+# Workspace config for module resolution
+COPY --from=builder /app/package.json /app/package.json
+COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-workspace.yaml
 
-# pnpm workspace config (needed for module resolution)
-COPY --from=builder /app/package.json ./root-package.json
-COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
-
-# Boot script — keeps prisma sync best-effort and logs to stdout, then execs Node
+# Boot script — additive schema sync, then exec Node
 COPY <<'EOF' /app/start.sh
 #!/bin/sh
 set -u
