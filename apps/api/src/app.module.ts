@@ -19,6 +19,7 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { InstallerModule } from './modules/installer/installer.module';
+import { VaultModule } from './modules/vault/vault.module';
 import { GatewayModule } from './gateway/gateway.module';
 import { AuditInterceptor } from './interceptors/audit.interceptor';
 import { TenantMiddleware } from './middleware/tenant.middleware';
@@ -49,6 +50,7 @@ import { RateLimitGuard } from './guards/rate-limit.guard';
     ReportsModule,
     SettingsModule,
     InstallerModule,
+    VaultModule,
     GatewayModule,
     HealthModule,
   ],

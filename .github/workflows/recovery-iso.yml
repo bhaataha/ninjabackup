@@ -1,0 +1,58 @@
+name: Recovery ISO
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Agent version to bake into the ISO (e.g. 1.0.0)'
+        required: true
+
+jobs:
+  build-iso:
+    name: Build recovery ISO
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            V="${{ github.event.release.tag_name }}"
+            echo "version=${V#v}" >> $GITHUB_OUTPUT
+          else
+            echo "version=${{ inputs.version }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build ISO via Docker
+        run: |
+          cd recovery-iso
+          docker build --build-arg AGENT_VERSION=${{ steps.ver.outputs.version }} -t ninjabackup/recovery-iso-builder .
+          mkdir -p dist
+          docker run --rm --privileged \
+            -v "$(pwd)/dist:/out" \
+            -e AGENT_VERSION=${{ steps.ver.outputs.version }} \
+            ninjabackup/recovery-iso-builder
+          ls -lh dist/
+
+      - name: Compute SHA-256
+        working-directory: recovery-iso/dist
+        run: sha256sum *.iso > checksums.txt
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recovery-iso-${{ steps.ver.outputs.version }}
+          path: recovery-iso/dist/*
+
+      - name: Attach to release
+        if: github.event_name == 'release'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: recovery-iso/dist/*
+          tag_name: ${{ github.event.release.tag_name }}
