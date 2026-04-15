@@ -16,13 +16,12 @@ import {
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   private readonly store = new Map<string, { count: number; resetAt: number }>();
-  private readonly limit: number;
-  private readonly windowMs: number;
+  // Class fields instead of constructor params — primitives can't be DI-injected
+  // which broke APP_GUARD registration (Nest tried to resolve `Object`).
+  protected readonly limit: number = 100;
+  protected readonly windowMs: number = 60000;
 
-  constructor(limit = 100, windowMs = 60000) {
-    this.limit = limit;
-    this.windowMs = windowMs;
-
+  constructor() {
     // Clean up expired entries every 5 minutes
     setInterval(() => {
       const now = Date.now();
@@ -72,7 +71,6 @@ export class RateLimitGuard implements CanActivate {
  */
 @Injectable()
 export class AuthRateLimitGuard extends RateLimitGuard {
-  constructor() {
-    super(10, 60000); // 10 requests per minute
-  }
+  protected readonly limit = 10;
+  protected readonly windowMs = 60000;
 }

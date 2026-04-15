@@ -50,18 +50,13 @@ COPY --from=builder /app/packages/database/prisma ./prisma
 COPY --from=builder /app/package.json /app/package.json
 COPY --from=builder /app/pnpm-workspace.yaml /app/pnpm-workspace.yaml
 
-# Boot script — keeps container alive 180s after any crash for log inspection
+# Boot script — additive schema sync, then exec Node
 COPY <<'EOF' /app/start.sh
 #!/bin/sh
 set -u
 echo "[boot] NinjaBackup API starting at $(date -u) on :${PORT:-3038}"
 prisma db push --schema ./prisma/schema.prisma --skip-generate --accept-data-loss 2>&1 || echo "[boot] prisma db push failed — continuing"
-echo "[boot] starting node dist/main"
-node dist/main
-RC=$?
-echo "[boot] node exited rc=$RC — sleeping 180s for log inspection"
-sleep 180
-exit $RC
+exec node dist/main
 EOF
 RUN chmod +x /app/start.sh
 
