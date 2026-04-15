@@ -1,12 +1,14 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsGateway } from '../../gateway/events.gateway';
+import { CommandsService } from '../agents/commands.service';
 
 @Injectable()
 export class JobsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly gateway: EventsGateway,
+    private readonly commands: CommandsService,
   ) {}
 
   async findAll(
@@ -91,7 +93,7 @@ export class JobsService {
       },
     });
 
-    this.gateway.sendAgentCommand(agentId, 'backup:start', {
+    const commandPayload = {
       jobId: job.id,
       type,
       policyId: policy?.id ?? null,
@@ -99,7 +101,12 @@ export class JobsService {
       excludePatterns: policy?.excludePatterns ?? [],
       bandwidthLimitMbps: policy?.bandwidthLimitMbps ?? 0,
       vssEnabled: policy?.vssEnabled ?? false,
-    });
+    };
+
+    // Persist the command so an offline agent picks it up on next heartbeat,
+    // and push via WebSocket for instant delivery when online.
+    await this.commands.enqueue(agentId, 'backup:start', commandPayload);
+    this.gateway.sendAgentCommand(agentId, 'backup:start', commandPayload);
 
     return job;
   }
@@ -155,7 +162,9 @@ export class JobsService {
       data: { status: 'CANCELLED', completedAt: new Date() },
     });
 
-    this.gateway.sendAgentCommand(job.agentId, 'backup:cancel', { jobId });
+    const payload = { jobId };
+    await this.commands.enqueue(job.agentId, 'backup:cancel', payload);
+    this.gateway.sendAgentCommand(job.agentId, 'backup:cancel', payload);
 
     return { cancelled: true };
   }

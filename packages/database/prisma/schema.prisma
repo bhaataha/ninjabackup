@@ -169,12 +169,40 @@ model Agent {
   backupJobs          BackupJob[]
   restoreJobs         RestoreJob[]
   agentPolicies       AgentPolicy[]
-  
+  commands            AgentCommand[]
+
   createdAt           DateTime    @default(now()) @map("created_at")
   updatedAt           DateTime    @updatedAt @map("updated_at")
-  
+
   @@unique([tenantId, hostname])
   @@map("agents")
+}
+
+// Queue of commands for an agent to execute (picked up via heartbeat)
+enum AgentCommandStatus {
+  PENDING
+  DELIVERED
+  ACKNOWLEDGED
+  FAILED
+}
+
+model AgentCommand {
+  id        String              @id @default(uuid()) @db.Uuid
+  agentId   String              @map("agent_id") @db.Uuid
+  type      String              // backup:start | backup:cancel | restore:start | agent:update
+  payload   Json                @default("{}")
+  status    AgentCommandStatus  @default(PENDING)
+
+  deliveredAt    DateTime? @map("delivered_at")
+  acknowledgedAt DateTime? @map("acknowledged_at")
+  errorMessage   String?   @map("error_message") @db.Text
+
+  agent     Agent     @relation(fields: [agentId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  @@index([agentId, status])
+  @@map("agent_commands")
 }
 
 // ═══════════════════════════════════════════════════

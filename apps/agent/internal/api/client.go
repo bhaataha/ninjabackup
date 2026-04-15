@@ -39,6 +39,18 @@ type RegisterResponse struct {
 	Status   string `json:"status"`
 }
 
+// AgentCommand is a pending command returned by the heartbeat endpoint.
+type AgentCommand struct {
+	ID      string                 `json:"id"`
+	Type    string                 `json:"type"`
+	Payload map[string]interface{} `json:"payload"`
+}
+
+// HeartbeatResponse is returned by POST /agents/:id/heartbeat
+type HeartbeatResponse struct {
+	Commands []AgentCommand `json:"commands"`
+}
+
 // JobStatusUpdate is sent during backup/restore progress
 type JobStatusUpdate struct {
 	Status          string  `json:"status,omitempty"`
@@ -111,8 +123,9 @@ func (c *Client) Register(req RegisterRequest) (*RegisterResponse, error) {
 	return &result, nil
 }
 
-// StartHeartbeat sends periodic heartbeats to the server
-func (c *Client) StartHeartbeat(agentID, version string) {
+// StartHeartbeat sends periodic heartbeats to the server and forwards any
+// pending commands the server returns onto the given channel.
+func (c *Client) StartHeartbeat(agentID, version string, commands chan<- AgentCommand) {
 	interval := time.Duration(c.cfg.HeartbeatInterval) * time.Second
 	if interval < 10*time.Second {
 		interval = 60 * time.Second
@@ -122,14 +135,25 @@ func (c *Client) StartHeartbeat(agentID, version string) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		err := c.sendHeartbeat(agentID, version)
+		cmds, err := c.sendHeartbeat(agentID, version)
 		if err != nil {
 			log.Printf("Heartbeat failed: %v", err)
+			continue
+		}
+		for _, cmd := range cmds {
+			if commands == nil {
+				continue
+			}
+			select {
+			case commands <- cmd:
+			default:
+				log.Printf("Command channel full, dropping %s (%s)", cmd.Type, cmd.ID)
+			}
 		}
 	}
 }
 
-func (c *Client) sendHeartbeat(agentID, version string) error {
+func (c *Client) sendHeartbeat(agentID, version string) ([]AgentCommand, error) {
 	payload := map[string]interface{}{
 		"status":       "ONLINE",
 		"agentVersion": version,
@@ -142,15 +166,39 @@ func (c *Client) sendHeartbeat(agentID, version string) error {
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("heartbeat returned HTTP %d", resp.StatusCode)
+		return nil, fmt.Errorf("heartbeat returned HTTP %d", resp.StatusCode)
 	}
 
-	return nil
+	var parsed HeartbeatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil {
+		// Older servers may return a raw agent object; treat as no commands.
+		return nil, nil
+	}
+	return parsed.Commands, nil
+}
+
+// AckCommand reports command completion (or failure) back to the server.
+func (c *Client) AckCommand(commandID string, errMsg string) {
+	payload := map[string]string{}
+	if errMsg != "" {
+		payload["error"] = errMsg
+	}
+	body, _ := json.Marshal(payload)
+	resp, err := c.httpClient.Post(
+		fmt.Sprintf("%s/agents/commands/%s/ack", c.baseURL, commandID),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		log.Printf("Failed to ack command %s: %v", commandID, err)
+		return
+	}
+	resp.Body.Close()
 }
 
 // ReportStatus reports the agent status to the server

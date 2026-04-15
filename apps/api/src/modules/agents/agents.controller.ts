@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { AgentsService } from './agents.service';
+import { CommandsService } from './commands.service';
 import { PoliciesService } from '../policies/policies.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -25,6 +26,7 @@ export class AgentsController {
   constructor(
     private readonly agentsService: AgentsService,
     private readonly policiesService: PoliciesService,
+    private readonly commandsService: CommandsService,
   ) {}
 
   @Post('token')
@@ -100,7 +102,18 @@ export class AgentsController {
     @Param('id') id: string,
     @Body() data: { status?: string; agentVersion?: string; diskInfo?: any },
   ) {
-    return this.agentsService.heartbeat(id, data);
+    const agent = await this.agentsService.heartbeat(id, data);
+    const commands = await this.commandsService.claimPending(id);
+    return { agent, commands };
+  }
+
+  @Post('commands/:commandId/ack')
+  @ApiOperation({ summary: 'Agent acknowledges a received command' })
+  async ackCommand(
+    @Param('commandId') commandId: string,
+    @Body() body: { error?: string },
+  ) {
+    return this.commandsService.acknowledge(commandId, body?.error);
   }
 
   @Get(':id/policies')

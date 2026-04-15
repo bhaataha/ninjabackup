@@ -27,19 +27,24 @@ RUN cd apps/api && npx @nestjs/cli build
 
 # ── Stage 4: Production Runner ──
 FROM node:20-alpine AS runner
-RUN npm i -g prisma@6
-
 WORKDIR /app
 
-# Copy built artifacts
+# Copy ALL node_modules (includes pnpm workspace symlinks for @ninjabackup/database)
 COPY --from=builder /app/node_modules ./node_modules
+
+# Copy the database package (needed at runtime for @ninjabackup/database imports)
+COPY --from=builder /app/packages/database ./packages/database
+
+# Copy built API
 COPY --from=builder /app/apps/api/dist ./dist
 COPY --from=builder /app/apps/api/package.json ./
+
+# Copy prisma schema (for potential migrations)
 COPY --from=builder /app/packages/database/prisma ./prisma
 
-# Prisma client
-COPY --from=prisma /app/node_modules/.pnpm/@prisma+client*/node_modules/@prisma/client ./node_modules/@prisma/client
-COPY --from=prisma /app/node_modules/.pnpm/@prisma+client*/node_modules/.prisma ./node_modules/.prisma
+# pnpm workspace config (needed for module resolution)
+COPY --from=builder /app/package.json ./root-package.json
+COPY --from=builder /app/pnpm-workspace.yaml ./pnpm-workspace.yaml
 
 ENV NODE_ENV=production
 ENV PORT=3038

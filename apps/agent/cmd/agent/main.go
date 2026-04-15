@@ -122,18 +122,22 @@ func main() {
 	throttleCfg := throttle.DefaultBusinessHoursConfig()
 	bwThrottle := throttle.NewThrottler(throttleCfg)
 
+	// Command channel: heartbeat pushes pending commands here,
+	// scheduler drains them and dispatches to the right handler.
+	commandCh := make(chan api.AgentCommand, 32)
+
 	// Scheduler
-	sched := scheduler.New(cfg, apiClient, resticEngine)
+	sched := scheduler.New(cfg, apiClient, resticEngine, commandCh)
 
 	// ──────────── Start Background Services ────────────
 
-	// 1. Heartbeat (every 60s)
-	go apiClient.StartHeartbeat(cfg.AgentID, Version)
+	// 1. Heartbeat (every 60s) — also picks up pending commands from the server
+	go apiClient.StartHeartbeat(cfg.AgentID, Version, commandCh)
 	log.Println("[✓] Heartbeat started (60s interval)")
 
-	// 2. Job scheduler (every 30s)
+	// 2. Job scheduler — cron + command dispatch
 	go sched.Start()
-	log.Println("[✓] Job scheduler started (30s poll)")
+	log.Println("[✓] Job scheduler started (cron-driven)")
 
 	// 3. Auto-update (every 6 hours)
 	autoUpdater := updater.NewUpdater(cfg.ServerURL, Version)

@@ -1,6 +1,7 @@
 package scheduler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
@@ -14,26 +15,34 @@ import (
 
 // Scheduler manages scheduled backup jobs
 type Scheduler struct {
-	cfg    *config.Config
-	api    *api.Client
-	restic *restic.Engine
-	stop   chan struct{}
-	wg     sync.WaitGroup
+	cfg      *config.Config
+	api      *api.Client
+	restic   *restic.Engine
+	stop     chan struct{}
+	wg       sync.WaitGroup
+	commands <-chan api.AgentCommand
 
-	mu     sync.Mutex
-	cron   *cron.Cron
+	// cancelFuncs maps a running job ID to a cancel function
+	jobsMu      sync.Mutex
+	cancelFuncs map[string]context.CancelFunc
+
+	mu   sync.Mutex
+	cron *cron.Cron
 	// policyID -> cron entry ID, so we can rebuild the schedule when policies change
 	entries map[string]cron.EntryID
 }
 
-// New creates a new scheduler
-func New(cfg *config.Config, apiClient *api.Client, resticEngine *restic.Engine) *Scheduler {
+// New creates a new scheduler.
+// `commands` receives pending commands picked up by the API client's heartbeat.
+func New(cfg *config.Config, apiClient *api.Client, resticEngine *restic.Engine, commands <-chan api.AgentCommand) *Scheduler {
 	return &Scheduler{
-		cfg:     cfg,
-		api:     apiClient,
-		restic:  resticEngine,
-		stop:    make(chan struct{}),
-		entries: make(map[string]cron.EntryID),
+		cfg:         cfg,
+		api:         apiClient,
+		restic:      resticEngine,
+		stop:        make(chan struct{}),
+		commands:    commands,
+		entries:     make(map[string]cron.EntryID),
+		cancelFuncs: make(map[string]context.CancelFunc),
 	}
 }
 
@@ -61,11 +70,84 @@ func (s *Scheduler) Start() {
 			if err := s.refreshPolicies(); err != nil {
 				log.Printf("Policy refresh failed: %v", err)
 			}
+		case cmd, ok := <-s.commands:
+			if !ok {
+				// channel closed
+				s.commands = nil
+				continue
+			}
+			go s.handleCommand(cmd)
 		case <-s.stop:
 			log.Println("Scheduler stopped")
 			return
 		}
 	}
+}
+
+// handleCommand dispatches a server-sent command to the correct handler and
+// ACKs it back to the server regardless of outcome.
+func (s *Scheduler) handleCommand(cmd api.AgentCommand) {
+	log.Printf("Received command %s (%s)", cmd.Type, cmd.ID)
+
+	var runErr error
+	switch cmd.Type {
+	case "backup:start":
+		runErr = s.handleBackupStart(cmd)
+	case "backup:cancel":
+		runErr = s.handleBackupCancel(cmd)
+	default:
+		runErr = fmt.Errorf("unknown command type: %s", cmd.Type)
+	}
+
+	errMsg := ""
+	if runErr != nil {
+		errMsg = runErr.Error()
+		log.Printf("Command %s failed: %v", cmd.ID, runErr)
+	}
+	s.api.AckCommand(cmd.ID, errMsg)
+}
+
+func (s *Scheduler) handleBackupStart(cmd api.AgentCommand) error {
+	jobID, _ := cmd.Payload["jobId"].(string)
+	if jobID == "" {
+		return fmt.Errorf("backup:start missing jobId")
+	}
+	paths := toStringSlice(cmd.Payload["includePaths"])
+	excludes := toStringSlice(cmd.Payload["excludePatterns"])
+
+	return s.RunBackup(jobID, paths, excludes)
+}
+
+func (s *Scheduler) handleBackupCancel(cmd api.AgentCommand) error {
+	jobID, _ := cmd.Payload["jobId"].(string)
+	if jobID == "" {
+		return fmt.Errorf("backup:cancel missing jobId")
+	}
+	s.jobsMu.Lock()
+	cancel, ok := s.cancelFuncs[jobID]
+	s.jobsMu.Unlock()
+	if !ok {
+		log.Printf("No running job %s to cancel", jobID)
+		return nil
+	}
+	cancel()
+	return nil
+}
+
+func toStringSlice(v interface{}) []string {
+	switch t := v.(type) {
+	case []string:
+		return t
+	case []interface{}:
+		out := make([]string, 0, len(t))
+		for _, item := range t {
+			if str, ok := item.(string); ok {
+				out = append(out, str)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 // Stop gracefully stops the scheduler
@@ -130,6 +212,18 @@ func (s *Scheduler) runPolicy(p api.BackupPolicy) {
 func (s *Scheduler) RunBackup(jobID string, paths []string, excludes []string) error {
 	log.Printf("Running backup job %s...", jobID)
 
+	// Register a cancellable context so backup:cancel commands can interrupt.
+	ctx, cancel := context.WithCancel(context.Background())
+	s.jobsMu.Lock()
+	s.cancelFuncs[jobID] = cancel
+	s.jobsMu.Unlock()
+	defer func() {
+		s.jobsMu.Lock()
+		delete(s.cancelFuncs, jobID)
+		s.jobsMu.Unlock()
+		cancel()
+	}()
+
 	// Report RUNNING status
 	s.api.ReportStatus(s.cfg.AgentID, "BACKING_UP")
 	s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
@@ -143,6 +237,16 @@ func (s *Scheduler) RunBackup(jobID string, paths []string, excludes []string) e
 			ProgressPercent: progress.PercentDone * 100,
 		})
 	})
+
+	// If the context was cancelled mid-run, treat as cancelled rather than failure.
+	if ctx.Err() != nil {
+		s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
+			Status:       "CANCELLED",
+			ErrorMessage: "cancelled by user",
+		})
+		s.api.ReportStatus(s.cfg.AgentID, "ONLINE")
+		return ctx.Err()
+	}
 
 	if err != nil {
 		s.api.UpdateJobStatus(jobID, api.JobStatusUpdate{
