@@ -74,6 +74,22 @@ func configPath() string {
 	return filepath.Join(configDir(), "config.json")
 }
 
+// ConfigDir is the public accessor for the platform-specific config directory.
+// Used by the tray companion app to find the agent's status file + IPC socket.
+func ConfigDir() string {
+	return configDir()
+}
+
+// StatusFile is the JSON file the agent writes its current state to (read by
+// the tray app for display).
+func StatusFile() string {
+	return filepath.Join(configDir(), "status.json")
+}
+
+// LocalAPIPort is the loopback TCP port the agent listens on for tray + CLI
+// commands. Loopback only — never exposed externally.
+const LocalAPIPort = 47821
+
 // Load reads config from disk, or returns defaults if not found
 func Load() (*Config, error) {
 	cfg := Default()

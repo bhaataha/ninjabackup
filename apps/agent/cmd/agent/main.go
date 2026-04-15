@@ -12,6 +12,7 @@ import (
 	"github.com/ninjabackup/agent/internal/api"
 	"github.com/ninjabackup/agent/internal/certs"
 	"github.com/ninjabackup/agent/internal/config"
+	"github.com/ninjabackup/agent/internal/localapi"
 	"github.com/ninjabackup/agent/internal/restic"
 	"github.com/ninjabackup/agent/internal/scheduler"
 	"github.com/ninjabackup/agent/internal/service"
@@ -144,7 +145,32 @@ func main() {
 	go autoUpdater.StartAutoUpdateLoop(6 * time.Hour)
 	log.Println("[✓] Auto-update loop started (6h interval)")
 
-	// 4. Log current throttle status
+	// 4. Local IPC server for tray companion app
+	hostname := sysinfo.Gather().Hostname
+	localHandlers := localapi.NewHandlers(localapi.Status{
+		AgentID:   cfg.AgentID,
+		TenantID:  cfg.TenantID,
+		Hostname:  hostname,
+		Version:   Version,
+		State:     "IDLE",
+		ServerURL: cfg.ServerURL,
+	})
+	localHandlers.OnBackupNow = func() error {
+		// Push a backup:start command into the same channel the heartbeat fills.
+		commandCh <- api.AgentCommand{Type: "backup:start", Payload: map[string]any{"trigger": "tray"}}
+		return nil
+	}
+	localHandlers.OnPause = func(p bool) {
+		log.Printf("[tray] backups paused=%v", p)
+	}
+	if ln, err := localHandlers.Serve(); err != nil {
+		log.Printf("Warning: local IPC server failed: %v", err)
+	} else {
+		log.Printf("[✓] Local IPC: 127.0.0.1:%d (tray)", config.LocalAPIPort)
+		_ = ln // kept open for the lifetime of the process
+	}
+
+	// 5. Log current throttle status
 	if bwThrottle != nil {
 		limit := bwThrottle.GetCurrentLimit()
 		if limit > 0 {

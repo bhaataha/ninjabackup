@@ -35,7 +35,7 @@ jobs:
         with:
           go-version: '1.22'
           cache-dependency-path: apps/agent/go.sum
-      - name: Build
+      - name: Build agent
         working-directory: apps/agent
         env:
           GOOS: ${{ matrix.target.os }}
@@ -49,6 +49,24 @@ jobs:
             -ldflags="-s -w -X main.version=${VERSION}" \
             -o dist/ninjabackup-agent-${VERSION}-${{ matrix.target.os }}-${{ matrix.target.arch }}${{ matrix.target.ext }} \
             ./cmd/agent
+
+      # Tray companion: only Windows can be cross-compiled with CGO_ENABLED=0.
+      # Linux/macOS tray builds require native GTK/Cocoa toolchains and live in a
+      # separate matrix below.
+      - name: Build tray (Windows only via cross-compile)
+        if: matrix.target.os == 'windows'
+        working-directory: apps/agent
+        env:
+          GOOS: windows
+          GOARCH: ${{ matrix.target.arch }}
+          CGO_ENABLED: 0
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          [ -z "$VERSION" ] && VERSION="${{ inputs.version }}"
+          go build -trimpath \
+            -ldflags="-s -w -H windowsgui -X main.version=${VERSION}" \
+            -o dist/ninjabackup-tray-${VERSION}-windows-${{ matrix.target.arch }}.exe \
+            ./cmd/tray
       - name: SHA-256 checksum
         working-directory: apps/agent/dist
         run: sha256sum * > checksums.txt
@@ -56,6 +74,49 @@ jobs:
         with:
           name: agent-${{ matrix.target.os }}-${{ matrix.target.arch }}
           path: apps/agent/dist/*
+
+  build-tray-native:
+    name: Build Tray (native ${{ matrix.os }})
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: amd64
+          - os: macos-latest
+            goos: darwin
+            goarch: arm64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+          cache-dependency-path: apps/agent/go.sum
+      - name: Install Linux deps
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-3-dev libayatana-appindicator3-dev
+      - name: Build tray
+        working-directory: apps/agent
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: 1
+        run: |
+          VERSION=${GITHUB_REF_NAME#v}
+          [ -z "$VERSION" ] && VERSION="${{ inputs.version }}"
+          mkdir -p dist
+          go build -trimpath \
+            -ldflags="-s -w -X main.version=${VERSION}" \
+            -o dist/ninjabackup-tray-${VERSION}-${{ matrix.goos }}-${{ matrix.goarch }} \
+            ./cmd/tray
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tray-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: apps/agent/dist/ninjabackup-tray-*
 
   publish-images:
     name: Build & Push Docker Images
@@ -107,7 +168,7 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-agent, publish-images]
+    needs: [build-agent, build-tray-native, publish-images]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -116,6 +177,11 @@ jobs:
         with:
           path: artifacts
           pattern: agent-*
+          merge-multiple: true
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          pattern: tray-*
           merge-multiple: true
       - name: Generate release notes
         run: |
