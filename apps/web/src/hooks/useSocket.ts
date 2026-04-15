@@ -2,7 +2,23 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || 'http://localhost:3038';
+// Derive WS URL from the API URL when NEXT_PUBLIC_WS_URL isn't explicitly set,
+// so the dashboard works in production without an extra env var.
+function deriveWsUrl(): string {
+  if (process.env.NEXT_PUBLIC_WS_URL) return process.env.NEXT_PUBLIC_WS_URL;
+  const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+  if (apiUrl) {
+    try {
+      const u = new URL(apiUrl);
+      return `${u.protocol}//${u.host}`;
+    } catch {
+      // fall through
+    }
+  }
+  return 'http://localhost:3038';
+}
+
+const WS_URL = deriveWsUrl();
 
 interface UseSocketOptions {
   tenantId?: string;

@@ -156,10 +156,19 @@ export const users = {
   delete: (id: string) => request<void>('DELETE', `/users/${id}`),
 };
 
+// ─── Pagination helper ───────────────────────────────────
+// API list endpoints sometimes return { data, meta } and sometimes a raw array.
+// Dashboards consume arrays — unwrap the page if needed.
+
+async function unwrapPage<T>(p: Promise<{ data: T[]; meta?: any } | T[]>): Promise<T[]> {
+  const r = await p;
+  return Array.isArray(r) ? r : r.data ?? [];
+}
+
 // ─── Agents ──────────────────────────────────────────────
 
 export const agents = {
-  list: () => request<any[]>('GET', '/agents'),
+  list: () => unwrapPage<any>(request<{ data: any[]; meta?: any } | any[]>('GET', '/agents')),
   getById: (id: string) => request<any>('GET', `/agents/${id}`),
   update: (id: string, data: any) => request<any>('PATCH', `/agents/${id}`, data),
   delete: (id: string) => request<void>('DELETE', `/agents/${id}`),
@@ -196,10 +205,20 @@ export const policies = {
 export const jobs = {
   list: (params?: { status?: string; agentId?: string }) => {
     const qs = new URLSearchParams(params as Record<string, string>).toString();
-    return request<any[]>('GET', `/jobs${qs ? `?${qs}` : ''}`);
+    return unwrapPage<any>(
+      request<{ data: any[]; meta?: any } | any[]>('GET', `/jobs${qs ? `?${qs}` : ''}`),
+    );
+  },
+  listPaged: (params?: { status?: string; agentId?: string; page?: number; limit?: number }) => {
+    const qs = new URLSearchParams(params as Record<string, string>).toString();
+    return request<{ data: any[]; meta: { total: number; page: number; limit: number; totalPages: number } }>(
+      'GET',
+      `/jobs${qs ? `?${qs}` : ''}`,
+    );
   },
   getById: (id: string) => request<any>('GET', `/jobs/${id}`),
-  trigger: (data: { agentId: string; policyId: string }) => request<any>('POST', '/jobs/trigger', data),
+  trigger: (data: { agentId: string; policyId: string; type?: string }) =>
+    request<any>('POST', '/jobs', data),
   cancel: (id: string) => request<any>('POST', `/jobs/${id}/cancel`),
   getStats: () => request<any>('GET', '/jobs/stats'),
 };
@@ -228,7 +247,7 @@ export const restore = {
 // ─── Alerts ──────────────────────────────────────────────
 
 export const alerts = {
-  list: () => request<any[]>('GET', '/alerts'),
+  list: () => unwrapPage<any>(request<{ data: any[]; meta?: any } | any[]>('GET', '/alerts')),
   acknowledge: (id: string) => request<any>('POST', `/alerts/${id}/acknowledge`),
   rules: {
     list: () => request<any[]>('GET', '/alerts/rules'),
@@ -243,7 +262,9 @@ export const alerts = {
 export const audit = {
   list: (params?: { action?: string; userId?: string; limit?: number; offset?: number }) => {
     const qs = new URLSearchParams(params as Record<string, string>).toString();
-    return request<any[]>('GET', `/audit${qs ? `?${qs}` : ''}`);
+    return unwrapPage<any>(
+      request<{ data: any[]; meta?: any } | any[]>('GET', `/audit${qs ? `?${qs}` : ''}`),
+    );
   },
 };
 
