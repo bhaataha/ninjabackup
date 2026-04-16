@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { StatusBadge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type User = {
   id: string;
@@ -19,24 +20,25 @@ type User = {
   active?: boolean;
 };
 
-function getRoleStyle(role: string) {
+function getRoleStyle(role: string, t: (en: string, he?: string) => string) {
   switch (role) {
     case 'OWNER':
       return {
         bg: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(239, 68, 68, 0.1))',
         color: '#f59e0b',
-        label: '👑 Owner',
+        label: `👑 ${t('Owner', 'בעלים')}`,
       };
     case 'ADMIN':
-      return { bg: 'var(--accent-glow)', color: 'var(--accent-primary)', label: '🛡️ Admin' };
+      return { bg: 'var(--accent-glow)', color: 'var(--accent-primary)', label: `🛡️ ${t('Admin', 'מנהל')}` };
     case 'OPERATOR':
-      return { bg: 'var(--accent-success-glow)', color: 'var(--accent-success)', label: '🔧 Operator' };
+      return { bg: 'var(--accent-success-glow)', color: 'var(--accent-success)', label: `🔧 ${t('Operator', 'מפעיל')}` };
     default:
-      return { bg: 'rgba(100,116,139,0.1)', color: 'var(--text-muted)', label: '👁️ Viewer' };
+      return { bg: 'rgba(100,116,139,0.1)', color: 'var(--text-muted)', label: `👁️ ${t('Viewer', 'צופה')}` };
   }
 }
 
 export default function UsersPage() {
+  const t = useT();
   const toast = useToast();
   const { data, loading, error, refetch } = useFetch<User[]>(() => usersApi.list() as Promise<User[]>);
   const [showInvite, setShowInvite] = useState(false);
@@ -44,13 +46,13 @@ export default function UsersPage() {
   const users = data ?? [];
 
   async function disable(id: string) {
-    if (!confirm('Disable this user?')) return;
+    if (!confirm(t('Disable this user?', 'להשבית משתמש זה?'))) return;
     try {
       await usersApi.update(id, { active: false });
       refetch();
-      toast.success('User disabled');
+      toast.success(t('User disabled', 'המשתמש הושבת'));
     } catch (e: any) {
-      toast.error('Failed to disable user', e?.message);
+      toast.error(t('Failed to disable user', 'שגיאה בהשבתת המשתמש'), e?.message);
     }
   }
 
@@ -58,9 +60,9 @@ export default function UsersPage() {
     try {
       await usersApi.update(id, { active: true });
       refetch();
-      toast.success('User enabled');
+      toast.success(t('User enabled', 'המשתמש הופעל'));
     } catch (e: any) {
-      toast.error('Failed to enable user', e?.message);
+      toast.error(t('Failed to enable user', 'שגיאה בהפעלת המשתמש'), e?.message);
     }
   }
 
@@ -69,11 +71,15 @@ export default function UsersPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Users</h1>
-            <p className="page-subtitle">{loading ? 'Loading…' : `${users.filter((u) => u.active !== false).length} active users`}</p>
+            <h1 className="page-title">{t('Users', 'משתמשים')}</h1>
+            <p className="page-subtitle">
+              {loading
+                ? t('Loading…', 'טוען…')
+                : `${users.filter((u) => u.active !== false).length} ${t('active users', 'משתמשים פעילים')}`}
+            </p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowInvite(true)}>
-            + Invite User
+            + {t('Invite User', 'הזמן משתמש')}
           </button>
         </div>
       </header>
@@ -86,26 +92,29 @@ export default function UsersPage() {
         ) : !loading && users.length === 0 ? (
           <EmptyState
             icon="👥"
-            title="No users yet"
-            description="Invite teammates to collaborate on backup management."
-            cta={{ label: '+ Invite User', onClick: () => setShowInvite(true) }}
+            title={t('No users yet', 'אין משתמשים עדיין')}
+            description={t(
+              'Invite teammates to collaborate on backup management.',
+              'הזמן חברי צוות לשיתוף פעולה בניהול גיבויים.',
+            )}
+            cta={{ label: `+ ${t('Invite User', 'הזמן משתמש')}`, onClick: () => setShowInvite(true) }}
           />
         ) : (
           <div className="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Role</th>
-                  <th>MFA</th>
-                  <th>Last Login</th>
-                  <th>Status</th>
-                  <th>Actions</th>
+                  <th>{t('Name', 'שם')}</th>
+                  <th>{t('Role', 'תפקיד')}</th>
+                  <th>{t('MFA', 'MFA')}</th>
+                  <th>{t('Last Login', 'כניסה אחרונה')}</th>
+                  <th>{t('Status', 'סטטוס')}</th>
+                  <th>{t('Actions', 'פעולות')}</th>
                 </tr>
               </thead>
               <tbody>
                 {users.map((user) => {
-                  const roleStyle = getRoleStyle(user.role);
+                  const roleStyle = getRoleStyle(user.role, t);
                   return (
                     <tr key={user.id} style={{ opacity: user.active === false ? 0.5 : 1 }}>
                       <td>
@@ -136,7 +145,16 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td>
-                        <span style={{ padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 600, background: roleStyle.bg, color: roleStyle.color }}>
+                        <span
+                          style={{
+                            padding: '4px 10px',
+                            borderRadius: '6px',
+                            fontSize: '0.75rem',
+                            fontWeight: 600,
+                            background: roleStyle.bg,
+                            color: roleStyle.color,
+                          }}
+                        >
                           {roleStyle.label}
                         </span>
                       </td>
@@ -148,7 +166,7 @@ export default function UsersPage() {
                             color: user.mfaEnabled ? 'var(--accent-success)' : 'var(--accent-danger)',
                           }}
                         >
-                          {user.mfaEnabled ? '🔐 Enabled' : '⚠️ Disabled'}
+                          {user.mfaEnabled ? `🔐 ${t('Enabled', 'מופעל')}` : `⚠️ ${t('Disabled', 'מושבת')}`}
                         </span>
                       </td>
                       <td style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
@@ -159,11 +177,11 @@ export default function UsersPage() {
                               hour: '2-digit',
                               minute: '2-digit',
                             })
-                          : 'Never'}
+                          : t('Never', 'אף פעם')}
                       </td>
                       <td>
                         <StatusBadge status={user.active !== false ? 'ACTIVE' : 'OFFLINE'}>
-                          {user.active !== false ? 'Active' : 'Deactivated'}
+                          {user.active !== false ? t('Active', 'פעיל') : t('Inactive', 'לא פעיל')}
                         </StatusBadge>
                       </td>
                       <td>
@@ -173,7 +191,7 @@ export default function UsersPage() {
                               className={`btn btn-sm ${user.active === false ? 'btn-secondary' : 'btn-danger'}`}
                               onClick={() => (user.active === false ? enable(user.id) : disable(user.id))}
                             >
-                              {user.active === false ? 'Enable' : 'Disable'}
+                              {user.active === false ? t('Activate', 'הפעל') : t('Deactivate', 'השבת')}
                             </button>
                           )}
                         </div>
@@ -187,12 +205,21 @@ export default function UsersPage() {
         )}
       </div>
 
-      {showInvite && <InviteModal onClose={() => setShowInvite(false)} onCreated={() => { setShowInvite(false); refetch(); }} />}
+      {showInvite && (
+        <InviteModal
+          onClose={() => setShowInvite(false)}
+          onCreated={() => {
+            setShowInvite(false);
+            refetch();
+          }}
+        />
+      )}
     </>
   );
 }
 
 function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: () => void }) {
+  const t = useT();
   const [email, setEmail] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -201,9 +228,10 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [err, setErr] = useState<string | null>(null);
 
   function validate(): string | null {
-    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return 'Please enter a valid email address.';
-    if (!firstName.trim()) return 'First name is required.';
-    if (!lastName.trim()) return 'Last name is required.';
+    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/))
+      return t('Please enter a valid email address.', 'יש להזין כתובת דוא"ל תקינה.');
+    if (!firstName.trim()) return t('First name is required.', 'שם פרטי הוא שדה חובה.');
+    if (!lastName.trim()) return t('Last name is required.', 'שם משפחה הוא שדה חובה.');
     return null;
   }
 
@@ -219,7 +247,7 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       await usersApi.create({ email, firstName, lastName, role });
       onCreated();
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to invite user');
+      setErr(e?.message ?? t('Failed to invite user', 'שגיאה בהזמנת המשתמש'));
     } finally {
       setBusy(false);
     }
@@ -240,24 +268,44 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
       onClick={onClose}
     >
       <div className="card" style={{ maxWidth: 480, width: '90%' }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>Invite User</h3>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>
+          {t('Invite User', 'הזמן משתמש')}
+        </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <input className="input" placeholder="Email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <input className="input" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-          <input className="input" placeholder="Last name" value={lastName} onChange={(e) => setLastName(e.target.value)} />
+          <input
+            className="input"
+            placeholder={t('Email', 'דוא"ל')}
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder={t('First Name', 'שם פרטי')}
+            value={firstName}
+            onChange={(e) => setFirstName(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder={t('Last Name', 'שם משפחה')}
+            value={lastName}
+            onChange={(e) => setLastName(e.target.value)}
+          />
           <select className="input" value={role} onChange={(e) => setRole(e.target.value)}>
-            <option value="VIEWER">Viewer — read-only</option>
-            <option value="OPERATOR">Operator — trigger backups & restores</option>
-            <option value="ADMIN">Admin — manage policies & users</option>
+            <option value="VIEWER">{t('Viewer — read-only', 'צופה — קריאה בלבד')}</option>
+            <option value="OPERATOR">{t('Operator — trigger backups & restores', 'מפעיל — הפעלת גיבויים ושחזורים')}</option>
+            <option value="ADMIN">{t('Admin — manage policies & users', 'מנהל — ניהול מדיניות ומשתמשים')}</option>
           </select>
         </div>
-        {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: 'var(--space-sm)' }}>{err}</div>}
+        {err && (
+          <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: 'var(--space-sm)' }}>{err}</div>
+        )}
         <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
           <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('Cancel', 'ביטול')}
           </button>
           <button className="btn btn-sm btn-primary" onClick={submit} disabled={busy}>
-            {busy ? 'Sending…' : 'Send Invite'}
+            {busy ? t('Sending…', 'שולח…') : t('Send Invite', 'שלח הזמנה')}
           </button>
         </div>
       </div>

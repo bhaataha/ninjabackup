@@ -88,9 +88,15 @@ model User {
   
   lastLogin    DateTime? @map("last_login")
   active       Boolean   @default(true)
-  
+
+  // Notification preferences — stored as JSON so new event types
+  // can be added without schema migrations.
+  // Shape: { emailEnabled: bool, inAppEnabled: bool,
+  //           events: { [EventType]: { email: bool, inApp: bool } } }
+  notificationPrefs Json @default("{}") @map("notification_prefs")
+
   tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  
+
   auditLogs    AuditLog[]
   apiKeys      ApiKey[]
   

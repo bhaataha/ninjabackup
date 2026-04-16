@@ -79,6 +79,42 @@ func (t *Throttler) GetResticBandwidthFlag() string {
 	return fmt.Sprintf("--limit-upload=%d", kbps)
 }
 
+// GetCurrentPriority returns the CPU scheduling priority string ("high", "normal",
+// "low") for the current time based on the active schedule window.
+// Returns "normal" when throttling is disabled or no schedule matches.
+func (t *Throttler) GetCurrentPriority() string {
+	if !t.config.Enabled {
+		return "normal"
+	}
+
+	now := time.Now()
+	currentDay := now.Weekday()
+	currentHour := now.Hour()
+
+	for _, sched := range t.config.Schedules {
+		if !containsDay(sched.DayOfWeek, currentDay) {
+			continue
+		}
+		if isInTimeWindow(currentHour, sched.StartHour, sched.EndHour) {
+			if sched.Priority != "" {
+				return sched.Priority
+			}
+		}
+	}
+	return "normal"
+}
+
+// ApplyToProcess applies the current schedule's CPU priority to the given PID.
+// Non-fatal: errors are logged but not returned so callers can continue.
+func (t *Throttler) ApplyToProcess(pid int) {
+	prio := t.GetCurrentPriority()
+	if err := SetProcessPriority(pid, prio); err != nil {
+		log.Printf("[throttle] CPU priority %q → pid %d: %v (non-fatal)", prio, pid, err)
+		return
+	}
+	log.Printf("[throttle] CPU priority %q applied to pid %d", prio, pid)
+}
+
 // ShouldBackupNow checks if backup should run based on schedule priority
 func (t *Throttler) ShouldBackupNow() (bool, string) {
 	if !t.config.Enabled {

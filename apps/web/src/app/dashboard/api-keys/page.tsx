@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { Badge, StatusBadge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type ApiKey = {
   id: string;
@@ -39,6 +40,7 @@ function timeAgo(date?: string) {
 }
 
 export default function ApiKeysPage() {
+  const t = useT();
   const toast = useToast();
   const { data, loading, error, refetch } = useFetch<ApiKey[]>(() => apiKeysApi.list() as Promise<ApiKey[]>);
   const [showCreate, setShowCreate] = useState(false);
@@ -63,23 +65,23 @@ export default function ApiKeysPage() {
       const r = await apiKeysApi.create({ name: newKeyName, permissions: selectedPerms });
       setGeneratedKey(r.key);
       refetch();
-      toast.success('API key created', 'Copy it now — it will not be shown again.');
+      toast.success(t('API key created', 'מפתח API נוצר'), t('Copy it now — it will not be shown again.', 'העתק אותו עכשיו — הוא לא יוצג שוב.'));
     } catch (e: any) {
-      setCreateErr(e?.message ?? 'Failed to create key');
-      toast.error('Failed to create API key', e?.message);
+      setCreateErr(e?.message ?? t('Failed to create key', 'יצירת המפתח נכשלה'));
+      toast.error(t('Failed to create API key', 'יצירת מפתח API נכשלה'), e?.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function revoke(id: string) {
-    if (!confirm('Revoke this API key? Any clients using it will lose access immediately.')) return;
+    if (!confirm(t('Revoke this API key? Any clients using it will lose access immediately.', 'לבטל את מפתח ה-API? כל הלקוחות המשתמשים בו יאבדו גישה מיידית.'))) return;
     try {
       await apiKeysApi.revoke(id);
       refetch();
-      toast.success('API key revoked');
+      toast.success(t('API key revoked', 'מפתח API בוטל'));
     } catch (e: any) {
-      toast.error('Failed to revoke API key', e?.message);
+      toast.error(t('Failed to revoke API key', 'ביטול מפתח API נכשל'), e?.message);
     }
   }
 
@@ -93,9 +95,9 @@ export default function ApiKeysPage() {
       setRenamingId(null);
       setRenameValue('');
       refetch();
-      toast.success('API key renamed');
+      toast.success(t('API key renamed', 'שם מפתח API שונה'));
     } catch (e: any) {
-      toast.error('Failed to rename', e?.message);
+      toast.error(t('Failed to rename', 'שינוי השם נכשל'), e?.message);
     }
   }
 
@@ -116,8 +118,8 @@ export default function ApiKeysPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">API Keys</h1>
-            <p className="page-subtitle">Manage programmatic access to the NinjaBackup API</p>
+            <h1 className="page-title">{t('API Keys', 'מפתחות API')}</h1>
+            <p className="page-subtitle">{t('Manage programmatic access to the NinjaBackup API', 'נהל גישה תכנותית ל-NinjaBackup API')}</p>
           </div>
           <button
             className="btn btn-primary"
@@ -129,7 +131,7 @@ export default function ApiKeysPage() {
               setCreateErr(null);
             }}
           >
-            + Create API Key
+            + {t('Create API Key', 'צור מפתח API')}
           </button>
         </div>
       </header>
@@ -156,7 +158,10 @@ export default function ApiKeysPage() {
           }}
         >
           <span style={{ fontSize: '1.1rem' }}>ℹ️</span>
-          API keys provide programmatic access to the NinjaBackup REST API. Keep your keys secure.
+          {t(
+            'API keys provide programmatic access to the NinjaBackup REST API. Keep your keys secure.',
+            'מפתחות API מספקים גישה תכנותית ל-NinjaBackup REST API. שמור על המפתחות שלך בצורה מאובטחת.'
+          )}
         </div>
 
         {showCreate && (
@@ -164,17 +169,23 @@ export default function ApiKeysPage() {
             className="card"
             style={{ marginBottom: 'var(--space-xl)', border: '1px solid var(--border-active)', boxShadow: 'var(--shadow-glow-accent)' }}
           >
-            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>🔑 Create New API Key</h3>
+            <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>🔑 {t('Create New API Key', 'צור מפתח API חדש')}</h3>
 
             {!generatedKey ? (
               <>
                 <div style={{ marginBottom: 'var(--space-md)' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>Key Name</label>
-                  <input type="text" value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="e.g., CI/CD Pipeline" style={inputStyle} />
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>{t('Key Name', 'שם מפתח')}</label>
+                  <input
+                    type="text"
+                    value={newKeyName}
+                    onChange={(e) => setNewKeyName(e.target.value)}
+                    placeholder={t('e.g., CI/CD Pipeline', 'למשל, צינור CI/CD')}
+                    style={inputStyle}
+                  />
                 </div>
 
                 <div style={{ marginBottom: 'var(--space-lg)' }}>
-                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '10px' }}>Permissions</label>
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '10px' }}>{t('Permissions', 'הרשאות')}</label>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
                     {AVAILABLE_PERMISSIONS.map((group) => (
                       <div
@@ -213,10 +224,10 @@ export default function ApiKeysPage() {
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="btn btn-primary" onClick={generateKey} disabled={busy || !newKeyName || selectedPerms.length === 0}>
-                    🔑 {busy ? 'Generating…' : 'Generate Key'}
+                    🔑 {busy ? t('Generating…', 'יוצר…') : t('Generate Key', 'צור מפתח')}
                   </button>
                   <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>
-                    Cancel
+                    {t('Cancel', 'ביטול')}
                   </button>
                 </div>
               </>
@@ -233,7 +244,7 @@ export default function ApiKeysPage() {
                     color: 'var(--accent-success)',
                   }}
                 >
-                  ⚠️ Copy this key now — you won&apos;t be able to see it again!
+                  ⚠️ {t("Copy this key now — you won't be able to see it again!", 'העתק את המפתח עכשיו — לא תוכל לראות אותו שוב!')}
                 </div>
 
                 <div
@@ -255,10 +266,10 @@ export default function ApiKeysPage() {
 
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button className="btn btn-primary" onClick={() => navigator.clipboard.writeText(generatedKey)}>
-                    📋 Copy Key
+                    📋 {t('Copy Key', 'העתק מפתח')}
                   </button>
                   <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>
-                    Done
+                    {t('Done', 'סיום')}
                   </button>
                 </div>
               </div>
@@ -271,10 +282,13 @@ export default function ApiKeysPage() {
         ) : keys.length === 0 ? (
           <EmptyState
             icon="🔑"
-            title="No API keys yet"
-            description="Create one to give CI pipelines or external integrations programmatic access."
+            title={t('No API keys yet', 'אין מפתחות API עדיין')}
+            description={t(
+              'Create one to give CI pipelines or external integrations programmatic access.',
+              'צור מפתח כדי לתת לצינורות CI או לאינטגרציות חיצוניות גישה תכנותית.'
+            )}
             cta={{
-              label: '+ Create API Key',
+              label: `+ ${t('Create API Key', 'צור מפתח API')}`,
               onClick: () => {
                 setShowCreate(true);
                 setGeneratedKey('');
@@ -290,12 +304,12 @@ export default function ApiKeysPage() {
               <table>
                 <thead>
                   <tr>
-                    <th>Name</th>
-                    <th>Key</th>
-                    <th>Permissions</th>
-                    <th>Created</th>
-                    <th>Last Used</th>
-                    <th>Status</th>
+                    <th>{t('Name', 'שם')}</th>
+                    <th>{t('Prefix', 'קידומת')}</th>
+                    <th>{t('Permissions', 'הרשאות')}</th>
+                    <th>{t('Created', 'נוצר')}</th>
+                    <th>{t('Last Used', 'שימוש אחרון')}</th>
+                    <th>{t('Status', 'סטטוס')}</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -327,7 +341,7 @@ export default function ApiKeysPage() {
                               setRenameValue(key.name);
                             }}
                             style={{ cursor: key.active ? 'text' : 'default' }}
-                            title={key.active ? 'Click to rename' : ''}
+                            title={key.active ? t('Click to rename', 'לחץ לשינוי שם') : ''}
                           >
                             {key.name}
                           </span>
@@ -363,7 +377,7 @@ export default function ApiKeysPage() {
                             <div style={{ fontSize: '0.7rem' }}>{new Date(key.lastUsedAt).toLocaleString()}</div>
                           </>
                         ) : (
-                          <span style={{ color: 'var(--text-muted)' }}>never</span>
+                          <span style={{ color: 'var(--text-muted)' }}>{t('Never used', 'לא בשימוש')}</span>
                         )}
                       </td>
                       <td>
@@ -379,10 +393,10 @@ export default function ApiKeysPage() {
                                 setRenameValue(key.name);
                               }}
                             >
-                              Rename
+                              {t('Rename', 'שנה שם')}
                             </button>
                             <button className="btn btn-danger btn-sm" onClick={() => revoke(key.id)}>
-                              Revoke
+                              {t('Revoke', 'בטל')}
                             </button>
                           </div>
                         )}

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { alerts as alertsApi } from '@/lib/api';
+import { useT } from '@/components/LocaleProvider';
 import { useToast } from '@/components/Toast';
 
 type AlertRule = {
@@ -51,6 +52,7 @@ function getSeverityStyle(s: string) {
 }
 
 export default function AlertsPage() {
+  const t = useT();
   const toast = useToast();
   const [tab, setTab] = useState<'alerts' | 'rules'>('alerts');
   const [showCreateRule, setShowCreateRule] = useState(false);
@@ -115,11 +117,13 @@ export default function AlertsPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Alerts</h1>
-            <p className="page-subtitle">{allAlerts.filter((a) => !a.acknowledged).length} unacknowledged alerts</p>
+            <h1 className="page-title">{t('Alerts', 'התראות')}</h1>
+            <p className="page-subtitle">
+              {allAlerts.filter((a) => !a.acknowledged).length} {t('unacknowledged alerts', 'התראות שלא אושרו')}
+            </p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowCreateRule(true)}>
-            + Create Rule
+            + {t('Create Rule', 'צור כלל')}
           </button>
         </div>
       </header>
@@ -137,19 +141,20 @@ export default function AlertsPage() {
             width: 'fit-content',
           }}
         >
-          {(['alerts', 'rules'] as const).map((t) => (
+          {(['alerts', 'rules'] as const).map((tabKey) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={tabKey}
+              onClick={() => setTab(tabKey)}
               className="btn btn-sm"
               style={{
-                background: tab === t ? 'var(--accent-primary)' : 'transparent',
-                color: tab === t ? 'white' : 'var(--text-secondary)',
+                background: tab === tabKey ? 'var(--accent-primary)' : 'transparent',
+                color: tab === tabKey ? 'white' : 'var(--text-secondary)',
                 border: 'none',
                 textTransform: 'capitalize',
               }}
             >
-              {t} {t === 'alerts' ? `(${allAlerts.length})` : `(${rules.length})`}
+              {tabKey === 'alerts' ? t('Active Alerts', 'התראות פעילות') : t('Alert Rules', 'כללי התראות')}{' '}
+              {tabKey === 'alerts' ? `(${allAlerts.length})` : `(${rules.length})`}
             </button>
           ))}
         </div>
@@ -163,8 +168,8 @@ export default function AlertsPage() {
             )}
             {allAlerts.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-                <div style={{ fontSize: '1rem', fontWeight: 600 }}>No alerts</div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>You&apos;re all caught up.</div>
+                <div style={{ fontSize: '1rem', fontWeight: 600 }}>{t('No active alerts', 'אין התראות פעילות')}</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>{t("You're all caught up.", 'אין כלום לטפל בו.')}</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -184,7 +189,7 @@ export default function AlertsPage() {
                         <div>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                             <span>{style.icon}</span>
-                            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{alert.ruleName ?? alert.rule ?? 'Alert'}</span>
+                            <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>{alert.ruleName ?? alert.rule ?? t('Alert', 'התראה')}</span>
                             <span
                               style={{
                                 padding: '2px 8px',
@@ -203,9 +208,11 @@ export default function AlertsPage() {
                             {new Date(alert.createdAt).toLocaleString()}
                           </div>
                         </div>
-                        {!alert.acknowledged && (
+                        {alert.acknowledged ? (
+                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Acknowledged', 'אושר')}</span>
+                        ) : (
                           <button className="btn btn-sm btn-secondary" onClick={() => acknowledge(alert.id)}>
-                            ✓ Acknowledge
+                            ✓ {t('Acknowledge', 'אשר')}
                           </button>
                         )}
                       </div>
@@ -224,12 +231,15 @@ export default function AlertsPage() {
             )}
             {rules.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-                <div style={{ fontSize: '1rem', fontWeight: 600 }}>No alert rules defined</div>
+                <div style={{ fontSize: '1rem', fontWeight: 600 }}>{t('No alert rules yet', 'אין כללי התראות עדיין')}</div>
                 <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 6 }}>
-                  Create a rule to get notified on events like backup failures or agents going offline.
+                  {t(
+                    'Create a rule to get notified on events like backup failures or agents going offline.',
+                    'צור כלל כדי לקבל התראות על אירועים כמו כשלי גיבוי או סוכנים שיצאו ממצב מקוון.',
+                  )}
                 </div>
                 <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={() => setShowCreateRule(true)}>
-                  + Create Rule
+                  + {t('Create Rule', 'צור כלל')}
                 </button>
               </div>
             ) : (
@@ -237,20 +247,20 @@ export default function AlertsPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Rule</th>
-                      <th>Type</th>
-                      <th>Severity</th>
-                      <th>Channels</th>
-                      <th>Status</th>
-                      <th>Actions</th>
+                      <th>{t('Rule Name', 'שם הכלל')}</th>
+                      <th>{t('Rule Type', 'סוג הכלל')}</th>
+                      <th>{t('Severity', 'חומרה')}</th>
+                      <th>{t('Channels', 'ערוצים')}</th>
+                      <th>{t('Status', 'סטטוס')}</th>
+                      <th>{t('Actions', 'פעולות')}</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rules.map((rule) => {
                       const sev = getSeverityStyle(rule.severity ?? 'INFO');
                       const channels: string[] = [];
-                      if (rule.notifyEmail) channels.push('email');
-                      if (rule.notifyWebhook) channels.push('webhook');
+                      if (rule.notifyEmail) channels.push(t('Email', 'דוא"ל'));
+                      if (rule.notifyWebhook) channels.push(t('Webhook', 'Webhook'));
                       return (
                         <tr key={rule.id}>
                           <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rule.name ?? rule.type}</td>
@@ -284,19 +294,19 @@ export default function AlertsPage() {
                           <td>{(rule.channels ?? channels).join(', ') || '—'}</td>
                           <td>
                             <span className={`status-badge ${rule.enabled ? 'online' : 'offline'}`}>
-                              {rule.enabled ? 'Active' : 'Disabled'}
+                              {rule.enabled ? t('Enabled', 'פעיל') : t('Disabled', 'מושבת')}
                             </span>
                           </td>
                           <td>
                             <div style={{ display: 'flex', gap: 4 }}>
                               <button className="btn btn-sm btn-secondary" onClick={() => setEditingRule(rule)}>
-                                Edit
+                                {t('Edit', 'ערוך')}
                               </button>
                               <button className="btn btn-sm btn-secondary" onClick={() => toggleRule(rule)}>
-                                {rule.enabled ? 'Disable' : 'Enable'}
+                                {rule.enabled ? t('Disable', 'בטל') : t('Enable', 'הפעל')}
                               </button>
                               <button className="btn btn-sm btn-danger" onClick={() => deleteRule(rule)}>
-                                Delete
+                                {t('Delete', 'מחק')}
                               </button>
                             </div>
                           </td>
@@ -350,6 +360,7 @@ function RuleModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const [name, setName] = useState(rule?.name ?? '');
   const [type, setType] = useState(rule?.type ?? RULE_TYPES[0].value);
@@ -416,38 +427,38 @@ function RuleModal({
     >
       <div className="card" style={{ maxWidth: 520, width: '90%', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
         <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>
-          {mode === 'create' ? 'Create Alert Rule' : 'Edit Alert Rule'}
+          {mode === 'create' ? t('Create Alert Rule', 'צור כלל התראה') : t('Edit Alert Rule', 'ערוך כלל התראה')}
         </h3>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name (optional)</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Name (optional)', 'שם (אופציונלי)')}</label>
           <input
             className="input"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. Weekend backup failures"
+            placeholder={t('e.g. Weekend backup failures', 'לדוגמה: כשלי גיבוי בסוף שבוע')}
           />
 
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Event type</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Event type', 'סוג אירוע')}</label>
           <select
             className="input"
             value={type}
             onChange={(e) => {
               setType(e.target.value);
-              const meta = RULE_TYPES.find((t) => t.value === e.target.value);
+              const meta = RULE_TYPES.find((rt) => rt.value === e.target.value);
               if (meta) setSeverity(meta.defaultSeverity);
             }}
           >
-            {RULE_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+            {RULE_TYPES.map((rt) => (
+              <option key={rt.value} value={rt.value}>
+                {rt.label}
               </option>
             ))}
           </select>
 
           {type === 'AGENT_OFFLINE' && (
             <>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Offline threshold (minutes)</label>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Offline threshold (minutes)', 'סף ניתוק (דקות)')}</label>
               <input
                 type="number"
                 min={1}
@@ -460,7 +471,7 @@ function RuleModal({
 
           {(type === 'STORAGE_FULL' || type === 'QUOTA_WARNING') && (
             <>
-              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Trigger at usage % of quota</label>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Trigger at usage % of quota', 'הפעל בשימוש של % מהמכסה')}</label>
               <input
                 type="number"
                 min={1}
@@ -472,21 +483,21 @@ function RuleModal({
             </>
           )}
 
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Severity</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Severity', 'חומרה')}</label>
           <select className="input" value={severity} onChange={(e) => setSeverity(e.target.value as any)}>
-            <option value="CRITICAL">🔴 Critical</option>
-            <option value="WARNING">🟡 Warning</option>
-            <option value="INFO">🔵 Info</option>
+            <option value="CRITICAL">🔴 {t('Critical', 'קריטי')}</option>
+            <option value="WARNING">🟡 {t('Warning', 'אזהרה')}</option>
+            <option value="INFO">🔵 {t('Info', 'מידע')}</option>
           </select>
 
           <div style={{ display: 'flex', gap: 'var(--space-md)', marginTop: 'var(--space-sm)', flexWrap: 'wrap' }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} />
-              📧 Email
+              📧 {t('Email', 'דוא"ל')}
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
               <input type="checkbox" checked={notifyWebhook} onChange={(e) => setNotifyWebhook(e.target.checked)} />
-              🔗 Webhook
+              🔗 {t('Webhook', 'Webhook')}
             </label>
           </div>
 
@@ -505,10 +516,10 @@ function RuleModal({
 
         <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
           <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('Cancel', 'ביטול')}
           </button>
           <button className="btn btn-sm btn-primary" onClick={save} disabled={busy}>
-            {busy ? 'Saving…' : mode === 'create' ? 'Create Rule' : '💾 Save'}
+            {busy ? t('Saving…', 'שומר…') : mode === 'create' ? t('Create Rule', 'צור כלל') : `💾 ${t('Save', 'שמור')}`}
           </button>
         </div>
       </div>

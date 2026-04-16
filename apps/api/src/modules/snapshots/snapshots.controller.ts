@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Delete, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SnapshotsService } from './snapshots.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -57,5 +57,18 @@ export class SnapshotsController {
     @Body() body: { path: string },
   ) {
     return this.snapshotsService.generateDownloadUrl(tid, id, body.path);
+  }
+
+  @Delete(':id')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Delete a single snapshot' })
+  async deleteOne(@TenantId() tid: string, @Param('id') id: string) {
+    return this.snapshotsService.deleteOne(tid, id);
+  }
+
+  @Post('bulk-delete')
+  @ApiOperation({ summary: 'Delete multiple snapshots in one request' })
+  async deleteBulk(@TenantId() tid: string, @Body() body: { ids: string[] }) {
+    return this.snapshotsService.deleteBulk(tid, body.ids);
   }
 }

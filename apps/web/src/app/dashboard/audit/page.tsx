@@ -7,6 +7,7 @@ import { Badge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 import { useToast } from '@/components/Toast';
+import { useT } from '@/components/LocaleProvider';
 
 type AuditLog = {
   id: string;
@@ -33,6 +34,7 @@ function getActionStyle(action: string) {
 }
 
 export default function AuditPage() {
+  const t = useT();
   const toast = useToast();
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
@@ -54,7 +56,14 @@ export default function AuditPage() {
     : logs;
 
   function exportCsv() {
-    const header = ['Time', 'User', 'Email', 'Action', 'Resource', 'IP'];
+    const header = [
+      t('Time', 'זמן'),
+      t('User', 'משתמש'),
+      t('Email', 'אימייל'),
+      t('Action', 'פעולה'),
+      t('Resource', 'משאב'),
+      t('IP', 'IP'),
+    ];
     const rows = filtered.map((l) => [
       l.createdAt,
       l.userName ?? l.user ?? '',
@@ -78,8 +87,8 @@ export default function AuditPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Audit Log</h1>
-            <p className="page-subtitle">All actions are logged with HMAC signatures for integrity</p>
+            <h1 className="page-title">{t('Audit Log', 'יומן ביקורת')}</h1>
+            <p className="page-subtitle">{t('All actions are logged with HMAC signatures for integrity', 'כל הפעולות מתועדות עם חתימות HMAC לצורך תקינות')}</p>
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
             <button
@@ -90,22 +99,28 @@ export default function AuditPage() {
                   const r = await auditApi.verify();
                   setVerifyResult(r);
                   if (r.invalid === 0) {
-                    toast.success('Integrity check passed', `${r.valid} of ${r.total} entries verified`);
+                    toast.success(
+                      t('Integrity check passed', 'בדיקת תקינות עברה'),
+                      `${r.valid} of ${r.total} ${t('entries verified', 'רשומות אומתו')}`,
+                    );
                   } else {
-                    toast.error('Integrity check FAILED', `${r.invalid} tampered entries detected`);
+                    toast.error(
+                      t('Integrity check FAILED', 'בדיקת תקינות נכשלה'),
+                      `${r.invalid} ${t('tampered entries detected', 'רשומות פגועות זוהו')}`,
+                    );
                   }
                 } catch (e: any) {
-                  toast.error('Verify failed', e?.message);
+                  toast.error(t('Verify failed', 'אימות נכשל'), e?.message);
                 } finally {
                   setVerifying(false);
                 }
               }}
               disabled={verifying}
             >
-              🔒 {verifying ? 'Verifying…' : 'Verify Integrity'}
+              🔒 {verifying ? t('Verifying…', 'מאמת…') : t('Verify Integrity', 'אמת תקינות')}
             </button>
             <button className="btn btn-secondary" onClick={exportCsv} disabled={filtered.length === 0}>
-              📥 Export CSV
+              📥 {t('Export CSV', 'ייצא CSV')}
             </button>
           </div>
         </div>
@@ -123,10 +138,12 @@ export default function AuditPage() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <div>
                 <div style={{ fontWeight: 700, fontSize: '0.95rem', color: verifyResult.invalid === 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
-                  {verifyResult.invalid === 0 ? '🔒 All entries valid' : `⚠️ ${verifyResult.invalid} tampered entries detected`}
+                  {verifyResult.invalid === 0
+                    ? `🔒 ${t('All entries valid', 'כל הרשומות תקינות')}`
+                    : `⚠️ ${verifyResult.invalid} ${t('tampered entries detected', 'רשומות פגועות זוהו')}`}
                 </div>
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 4 }}>
-                  Verified {verifyResult.valid} of {verifyResult.total} most-recent entries via HMAC-SHA256.
+                  {t('Verified', 'אומתו')} {verifyResult.valid} {t('of', 'מתוך')} {verifyResult.total} {t('most-recent entries via HMAC-SHA256.', 'הרשומות האחרונות באמצעות HMAC-SHA256.')}
                 </div>
               </div>
               <button className="btn btn-sm btn-secondary" onClick={() => setVerifyResult(null)}>
@@ -138,7 +155,7 @@ export default function AuditPage() {
         <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
           <input
             type="text"
-            placeholder="Search by action, user, or resource..."
+            placeholder={t('Search by action, user, or resource...', 'חפש לפי פעולה, משתמש או משאב...')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             style={{
@@ -160,7 +177,7 @@ export default function AuditPage() {
             className="input"
             style={{ maxWidth: 220 }}
           >
-            <option value="">All actions</option>
+            <option value="">{t('All actions', 'כל הפעולות')}</option>
             <option value="auth.login">auth.login</option>
             <option value="agent.register">agent.register</option>
             <option value="backup.start">backup.start</option>
@@ -171,7 +188,7 @@ export default function AuditPage() {
             <option value="user.create">user.create</option>
           </select>
           <button className="btn btn-sm btn-secondary" onClick={refetch}>
-            🔄 Refresh
+            🔄 {t('Refresh', 'רענן')}
           </button>
         </div>
 
@@ -180,18 +197,22 @@ export default function AuditPage() {
         {loading && logs.length === 0 ? (
           <TableSkeleton rows={8} cols={6} />
         ) : filtered.length === 0 ? (
-          <EmptyState icon="📝" title="No audit entries" description="Actions taken by users and the system will appear here." />
+          <EmptyState
+            icon="📝"
+            title={t('No audit entries', 'אין רשומות ביקורת עדיין')}
+            description={t('Actions taken by users and the system will appear here.', 'פעולות שבוצעו על ידי משתמשים והמערכת יופיעו כאן.')}
+          />
         ) : (
           <div className="table-container">
             <table>
               <thead>
                 <tr>
-                  <th>Time</th>
-                  <th>User</th>
-                  <th>Action</th>
-                  <th>Resource</th>
-                  <th>IP Address</th>
-                  <th>Integrity</th>
+                  <th>{t('Time', 'זמן')}</th>
+                  <th>{t('User', 'משתמש')}</th>
+                  <th>{t('Action', 'פעולה')}</th>
+                  <th>{t('Resource', 'משאב')}</th>
+                  <th>{t('IP Address', 'כתובת IP')}</th>
+                  <th>{t('Integrity', 'תקינות')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -210,7 +231,7 @@ export default function AuditPage() {
                       </td>
                       <td>
                         <div style={{ fontWeight: 600, fontSize: '0.85rem', color: 'var(--text-primary)' }}>
-                          {log.userName ?? log.user ?? 'System'}
+                          {log.userName ?? log.user ?? t('System', 'מערכת')}
                         </div>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{log.userEmail ?? log.email ?? '—'}</div>
                       </td>
@@ -237,9 +258,9 @@ export default function AuditPage() {
                       </td>
                       <td>
                         {log.hmacValid !== false ? (
-                          <Badge tone="success" size="xs">🔒 HMAC Valid</Badge>
+                          <Badge tone="success" size="xs">🔒 {t('Valid', 'תקין')}</Badge>
                         ) : (
-                          <Badge tone="danger" size="xs">⚠️ Invalid</Badge>
+                          <Badge tone="danger" size="xs">⚠️ {t('Tampered', 'פגוע')}</Badge>
                         )}
                       </td>
                     </tr>

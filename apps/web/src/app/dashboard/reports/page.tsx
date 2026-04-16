@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { reports as reportsApi } from '@/lib/api';
+import { useT } from '@/components/LocaleProvider';
 
 type DailyStat = { date: string; backups: number; success: number; failed: number; dataGb: number };
 type AgentStat = { agent: string; backups: number; successRate: number; totalGb: number; avgDuration: string };
@@ -47,6 +48,7 @@ function MiniLineChart({ values, color }: { values: number[]; color: string }) {
 }
 
 export default function ReportsPage() {
+  const t = useT();
   const [period, setPeriod] = useState<'24h' | '7d' | '30d' | '90d'>('7d');
   const reportRef = useRef<HTMLDivElement>(null);
   const days = period === '24h' ? 1 : period === '7d' ? 7 : period === '30d' ? 30 : 90;
@@ -87,16 +89,16 @@ export default function ReportsPage() {
           <h1>NinjaBackup — Backup Report</h1>
           <p>Period: ${period} · Generated: ${new Date().toLocaleString()}</p>
           <div class="kpi-row">
-            <div class="kpi"><div class="kpi-val">${totalBackups}</div><div>Total Backups</div></div>
-            <div class="kpi"><div class="kpi-val">${successRate}%</div><div>Success Rate</div></div>
-            <div class="kpi"><div class="kpi-val">${totalFailed}</div><div>Failed</div></div>
-            <div class="kpi"><div class="kpi-val">${(totalDataGb / 1000).toFixed(1)} TB</div><div>Data Processed</div></div>
+            <div class="kpi"><div class="kpi-val">${totalBackups}</div><div>${t('Total Backups', 'סה"כ גיבויים')}</div></div>
+            <div class="kpi"><div class="kpi-val">${successRate}%</div><div>${t('Success Rate', 'שיעור הצלחה')}</div></div>
+            <div class="kpi"><div class="kpi-val">${totalFailed}</div><div>${t('Failed', 'נכשל')}</div></div>
+            <div class="kpi"><div class="kpi-val">${(totalDataGb / 1000).toFixed(1)} TB</div><div>${t('Data Backed Up', 'נתונים שגובו')}</div></div>
           </div>
-          <h2>Daily Breakdown</h2>
-          <table><thead><tr><th>Date</th><th>Backups</th><th>Success</th><th>Failed</th><th>Data (GB)</th></tr></thead>
+          <h2>${t('Backup Summary', 'סיכום גיבויים')}</h2>
+          <table><thead><tr><th>${t('Date', 'תאריך')}</th><th>${t('Backups', 'גיבויים')}</th><th>${t('Success Rate', 'שיעור הצלחה')}</th><th>${t('Failed', 'נכשל')}</th><th>${t('Data Backed Up', 'נתונים שגובו')} (GB)</th></tr></thead>
           <tbody>${dailyStats.map((d) => `<tr><td>${d.date}</td><td>${d.backups}</td><td>${d.success}</td><td>${d.failed}</td><td>${d.dataGb}</td></tr>`).join('')}</tbody></table>
-          <h2>Agent Performance</h2>
-          <table><thead><tr><th>Agent</th><th>Backups</th><th>Success Rate</th><th>Total Data</th><th>Avg Duration</th></tr></thead>
+          <h2>${t('Agent Performance', 'ביצועי סוכנים')}</h2>
+          <table><thead><tr><th>${t('Agent', 'סוכן')}</th><th>${t('Backups', 'גיבויים')}</th><th>${t('Success Rate', 'שיעור הצלחה')}</th><th>${t('Total GB', 'סה"כ GB')}</th><th>${t('Avg Duration', 'משך ממוצע')}</th></tr></thead>
           <tbody>${agentStats.map((a) => `<tr><td>${a.agent}</td><td>${a.backups}</td><td>${a.successRate}%</td><td>${a.totalGb} GB</td><td>${a.avgDuration}</td></tr>`).join('')}</tbody></table>
         </body></html>
       `);
@@ -110,8 +112,8 @@ export default function ReportsPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Reports</h1>
-            <p className="page-subtitle">Backup performance analytics</p>
+            <h1 className="page-title">{t('Reports', 'דוחות')}</h1>
+            <p className="page-subtitle">{t('Backup performance analytics', 'ניתוח ביצועי גיבויים')}</p>
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
             <div
@@ -135,12 +137,21 @@ export default function ReportsPage() {
                     border: 'none',
                   }}
                 >
-                  {p}
+                  {p === '7d'
+                    ? t('Last 7 days', '7 ימים אחרונים')
+                    : p === '30d'
+                    ? t('Last 30 days', '30 ימים אחרונים')
+                    : p === '90d'
+                    ? t('Last 90 days', '90 ימים אחרונים')
+                    : p}
                 </button>
               ))}
             </div>
             <button className="btn btn-primary" onClick={exportPdf}>
-              📄 Export PDF
+              📄 {t('Export PDF', 'ייצא PDF')}
+            </button>
+            <button className="btn btn-secondary" onClick={() => window.print()}>
+              🖨️ {t('Print', 'הדפס')}
             </button>
           </div>
         </div>
@@ -154,41 +165,45 @@ export default function ReportsPage() {
         )}
 
         {loading && !data ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading report…</div>
+          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>
+            {t('Loading…', 'טוען…')}
+          </div>
         ) : (
           <>
             <div className="kpi-grid" style={{ marginBottom: 'var(--space-xl)' }}>
               <div className="kpi-card blue">
                 <div className="kpi-icon blue">📦</div>
                 <div className="kpi-value">{totalBackups}</div>
-                <div className="kpi-label">Total Backups</div>
+                <div className="kpi-label">{t('Total Backups', 'סה"כ גיבויים')}</div>
                 <MiniLineChart values={dailyStats.map((d) => d.backups)} color="var(--accent-primary)" />
               </div>
               <div className="kpi-card green">
                 <div className="kpi-icon green">✅</div>
                 <div className="kpi-value">{successRate}%</div>
-                <div className="kpi-label">Success Rate</div>
+                <div className="kpi-label">{t('Success Rate', 'שיעור הצלחה')}</div>
                 <MiniLineChart values={dailyStats.map((d) => (d.backups > 0 ? (d.success / d.backups) * 100 : 0))} color="var(--accent-success)" />
               </div>
               <div className="kpi-card red">
                 <div className="kpi-icon red">❌</div>
                 <div className="kpi-value">{totalFailed}</div>
-                <div className="kpi-label">Total Failed</div>
+                <div className="kpi-label">{t('Failed', 'נכשל')}</div>
                 <MiniLineChart values={dailyStats.map((d) => d.failed)} color="var(--accent-danger)" />
               </div>
               <div className="kpi-card yellow">
                 <div className="kpi-icon yellow">💾</div>
                 <div className="kpi-value">{(totalDataGb / 1000).toFixed(1)} TB</div>
-                <div className="kpi-label">Data Processed</div>
+                <div className="kpi-label">{t('Data Backed Up', 'נתונים שגובו')}</div>
                 <MiniLineChart values={dailyStats.map((d) => d.dataGb)} color="var(--accent-warning)" />
               </div>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-lg)', marginBottom: 'var(--space-lg)' }}>
               <div className="card">
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>📊 Daily Backup Volume</h3>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>
+                  📊 {t('Backup Summary', 'סיכום גיבויים')}
+                </h3>
                 {dailyStats.length === 0 ? (
-                  <div style={{ color: 'var(--text-muted)' }}>No data for selected period.</div>
+                  <div style={{ color: 'var(--text-muted)' }}>{t('No data for selected period.', 'אין נתונים לתקופה שנבחרה.')}</div>
                 ) : (
                   <BarChart
                     data={dailyStats.map((d) => ({ label: d.date, value: d.backups, color: 'var(--accent-primary)' }))}
@@ -198,9 +213,11 @@ export default function ReportsPage() {
               </div>
 
               <div className="card">
-                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>💾 Storage Growth</h3>
+                <h3 style={{ fontSize: '0.95rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>
+                  💾 {t('Storage Trend', 'מגמת אחסון')}
+                </h3>
                 {storageTrend.length === 0 ? (
-                  <div style={{ color: 'var(--text-muted)' }}>No data.</div>
+                  <div style={{ color: 'var(--text-muted)' }}>{t('No data.', 'אין נתונים.')}</div>
                 ) : (
                   <BarChart
                     data={storageTrend.map((d) => ({ label: d.date, value: d.usedTb * 10, color: 'var(--accent-purple)' }))}
@@ -212,21 +229,23 @@ export default function ReportsPage() {
 
             <div className="card">
               <div className="card-header">
-                <h3 className="card-title">🖥️ Agent Performance</h3>
+                <h3 className="card-title">🖥️ {t('Agent Performance', 'ביצועי סוכנים')}</h3>
               </div>
               {agentStats.length === 0 ? (
-                <div style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>No agent activity in this period.</div>
+                <div style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>
+                  {t('No agent activity in this period.', 'אין פעילות סוכנים בתקופה זו.')}
+                </div>
               ) : (
                 <div className="table-container" style={{ border: 'none' }}>
                   <table>
                     <thead>
                       <tr>
-                        <th>Agent</th>
-                        <th>Backups</th>
-                        <th>Success Rate</th>
-                        <th>Total Data</th>
-                        <th>Avg Duration</th>
-                        <th>Health</th>
+                        <th>{t('Agent', 'סוכן')}</th>
+                        <th>{t('Backups', 'גיבויים')}</th>
+                        <th>{t('Success Rate', 'שיעור הצלחה')}</th>
+                        <th>{t('Total GB', 'סה"כ GB')}</th>
+                        <th>{t('Avg Duration', 'משך ממוצע')}</th>
+                        <th>{t('Health', 'בריאות')}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -253,7 +272,11 @@ export default function ReportsPage() {
                           <td style={{ fontSize: '0.85rem' }}>{a.avgDuration}</td>
                           <td>
                             <span className={`status-badge ${a.successRate >= 95 ? 'online' : a.successRate >= 85 ? 'pending' : 'error'}`}>
-                              {a.successRate >= 95 ? 'Healthy' : a.successRate >= 85 ? 'Warning' : 'Critical'}
+                              {a.successRate >= 95
+                                ? t('Healthy', 'תקין')
+                                : a.successRate >= 85
+                                ? t('Warning', 'אזהרה')
+                                : t('Critical', 'קריטי')}
                             </span>
                           </td>
                         </tr>

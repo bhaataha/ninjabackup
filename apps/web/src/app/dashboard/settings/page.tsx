@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
-import { settings as settingsApi, tenants, auth } from '@/lib/api';
+import { settings as settingsApi, tenants, auth, notifications as notifApi,
+  NOTIFICATION_EVENTS, NotificationPrefs, NotifEvent } from '@/lib/api';
 import { useToast } from '@/components/Toast';
 import { ErrorBanner } from '@/components/EmptyState';
 import { useTheme } from '@/components/ThemeProvider';
@@ -192,6 +193,8 @@ export default function SettingsPage() {
 
           <ThemeCard />
 
+          <NotificationPrefsCard />
+
           <div className="card">
             <h3 style={{ fontSize: '1rem', fontWeight: 700, marginBottom: 'var(--space-lg)' }}>🔗 API & Integrations</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
@@ -226,6 +229,136 @@ export default function SettingsPage() {
         </div>
       </div>
     </>
+  );
+}
+
+// ─── Notification Preferences Card ──────────────────────────────────────────
+
+const EVENT_LABELS: Record<NotifEvent, string> = {
+  BACKUP_SUCCESS: 'Backup succeeded',
+  BACKUP_FAILED: 'Backup failed',
+  AGENT_OFFLINE: 'Agent went offline',
+  STORAGE_WARNING: 'Storage quota warning',
+  RESTORE_COMPLETE: 'Restore completed',
+};
+
+function NotificationPrefsCard() {
+  const toast = useToast();
+  const { data, loading } = useFetch<NotificationPrefs>(() => notifApi.getPrefs());
+  const [prefs, setPrefs] = useState<NotificationPrefs | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (data) setPrefs(data);
+  }, [data]);
+
+  if (loading || !prefs) return null;
+
+  function setGlobal(key: 'emailEnabled' | 'inAppEnabled', v: boolean) {
+    setPrefs((p) => p && ({ ...p, [key]: v }));
+  }
+
+  function setEvent(event: NotifEvent, channel: 'email' | 'inApp', v: boolean) {
+    setPrefs((p) => {
+      if (!p) return p;
+      return {
+        ...p,
+        events: {
+          ...p.events,
+          [event]: { ...(p.events[event] ?? { email: true, inApp: true }), [channel]: v },
+        },
+      };
+    });
+  }
+
+  async function save() {
+    if (!prefs) return;
+    setSaving(true);
+    try {
+      await notifApi.savePrefs(prefs);
+      toast.success('Notification preferences saved');
+    } catch (e: any) {
+      toast.error('Save failed', e?.message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const thStyle: React.CSSProperties = {
+    fontSize: '0.72rem',
+    fontWeight: 700,
+    color: 'var(--text-muted)',
+    padding: '6px 8px',
+    textAlign: 'center' as const,
+  };
+  const tdStyle: React.CSSProperties = { padding: '8px', textAlign: 'center' as const, verticalAlign: 'middle' };
+
+  return (
+    <div className="card" style={{ gridColumn: '1 / -1' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-lg)' }}>
+        <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>🔔 Notification Preferences</h3>
+        <button className="btn btn-sm btn-primary" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save'}
+        </button>
+      </div>
+
+      {/* Global toggles */}
+      <div style={{ display: 'flex', gap: 'var(--space-xl)', marginBottom: 'var(--space-lg)' }}>
+        <Toggle
+          label="Email notifications"
+          description="Receive alerts by email"
+          value={prefs.emailEnabled}
+          onChange={(v) => setGlobal('emailEnabled', v)}
+        />
+        <Toggle
+          label="In-app notifications"
+          description="Show badge in dashboard header"
+          value={prefs.inAppEnabled}
+          onChange={(v) => setGlobal('inAppEnabled', v)}
+        />
+      </div>
+
+      {/* Per-event table */}
+      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
+        <thead>
+          <tr style={{ borderBottom: '1px solid var(--border-default)' }}>
+            <th style={{ ...thStyle, textAlign: 'left' }}>Event</th>
+            <th style={thStyle}>📧 Email</th>
+            <th style={thStyle}>🔔 In-App</th>
+          </tr>
+        </thead>
+        <tbody>
+          {NOTIFICATION_EVENTS.map((evt) => {
+            const ep = prefs.events[evt] ?? { email: true, inApp: true };
+            return (
+              <tr key={evt} style={{ borderBottom: '1px solid var(--border-default)' }}>
+                <td style={{ ...tdStyle, textAlign: 'left', paddingLeft: '4px' }}>
+                  {EVENT_LABELS[evt]}
+                </td>
+                <td style={tdStyle}>
+                  <input
+                    type="checkbox"
+                    checked={ep.email && prefs.emailEnabled}
+                    disabled={!prefs.emailEnabled}
+                    onChange={(e) => setEvent(evt, 'email', e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: prefs.emailEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                </td>
+                <td style={tdStyle}>
+                  <input
+                    type="checkbox"
+                    checked={ep.inApp && prefs.inAppEnabled}
+                    disabled={!prefs.inAppEnabled}
+                    onChange={(e) => setEvent(evt, 'inApp', e.target.checked)}
+                    style={{ width: '16px', height: '16px', cursor: prefs.inAppEnabled ? 'pointer' : 'not-allowed' }}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

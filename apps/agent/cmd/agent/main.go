@@ -73,6 +73,16 @@ func main() {
 `, Version)
 	}
 
+	// ──────────── Rollback sentinel check ────────────
+	// Must run before anything meaningful so that a bad update binary can be
+	// detected and swapped back within the grace window (90 seconds).
+	// If a rollback is performed the function triggers a service restart and
+	// we should exit cleanly; the old binary will take over.
+	if updater.CheckUpdateSentinel(90 * time.Second) {
+		log.Println("[updater] rollback initiated — exiting this process")
+		os.Exit(0)
+	}
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
@@ -119,9 +129,13 @@ func main() {
 	// Restic engine
 	resticEngine := restic.NewEngine(cfg)
 
-	// Bandwidth throttle
+	// Bandwidth + CPU throttle
 	throttleCfg := throttle.DefaultBusinessHoursConfig()
 	bwThrottle := throttle.NewThrottler(throttleCfg)
+
+	// Wire throttler into restic so CPU priority is applied to every
+	// backup/restore process automatically.
+	resticEngine.SetThrottler(bwThrottle)
 
 	// Command channel: heartbeat pushes pending commands here,
 	// scheduler drains them and dispatches to the right handler.
@@ -207,6 +221,15 @@ func main() {
 		log.Println("Press Ctrl+C to stop.")
 	}
 	log.Println("────────────────────────────────────────")
+
+	// ──────────── Startup health confirmation ────────────
+	// If we were started by an auto-update, mark startup healthy after 2
+	// minutes.  This clears the rollback sentinel so a future crash won't
+	// be misidentified as an update-related failure.
+	go func() {
+		time.Sleep(2 * time.Minute)
+		updater.MarkStartupHealthy()
+	}()
 
 	// ──────────── Wait for Shutdown ────────────
 

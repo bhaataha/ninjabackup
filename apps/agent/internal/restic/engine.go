@@ -11,12 +11,20 @@ import (
 	"time"
 
 	"github.com/ninjabackup/agent/internal/config"
+	"github.com/ninjabackup/agent/internal/throttle"
 )
 
 // Engine wraps the Restic CLI for backup operations
 type Engine struct {
 	cfg        *config.Config
 	resticPath string
+	throttler  *throttle.Throttler // optional — sets CPU priority on restic processes
+}
+
+// SetThrottler wires a bandwidth/CPU throttler into the engine.
+// Must be called before any backup or restore operation.
+func (e *Engine) SetThrottler(t *throttle.Throttler) {
+	e.throttler = t
 }
 
 // BackupResult contains the summary of a backup operation
@@ -130,6 +138,11 @@ func (e *Engine) Backup(paths []string, excludes []string, tags []string, onProg
 		return nil, fmt.Errorf("start restic: %w", err)
 	}
 
+	// Apply CPU scheduling priority so restic doesn't starve interactive work.
+	if e.throttler != nil && cmd.Process != nil {
+		e.throttler.ApplyToProcess(cmd.Process.Pid)
+	}
+
 	var result BackupResult
 	result.StartTime = startTime
 
@@ -182,7 +195,16 @@ func (e *Engine) Restore(snapshotID string, targetPath string, include []string)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
-	if err := cmd.Run(); err != nil {
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start restic restore: %w", err)
+	}
+
+	// Apply CPU scheduling priority to the restore process.
+	if e.throttler != nil && cmd.Process != nil {
+		e.throttler.ApplyToProcess(cmd.Process.Pid)
+	}
+
+	if err := cmd.Wait(); err != nil {
 		return fmt.Errorf("restic restore failed: %w", err)
 	}
 

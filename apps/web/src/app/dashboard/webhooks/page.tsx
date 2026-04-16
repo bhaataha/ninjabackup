@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { StatusBadge, Badge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Webhook = {
   id: string;
@@ -51,6 +52,7 @@ function timeAgo(date?: string) {
 }
 
 export default function WebhooksPage() {
+  const t = useT();
   const toast = useToast();
   const { data, refetch } = useFetch<Webhook[]>(() => webhooksApi.list() as Promise<Webhook[]>);
   const { data: deliveriesData } = useFetch<Delivery[]>(() => webhooksApi.deliveries() as Promise<Delivery[]>, [], { interval: 30_000 });
@@ -80,10 +82,10 @@ export default function WebhooksPage() {
       setNewUrl('');
       setSelectedEvents([]);
       refetch();
-      toast.success('Webhook created');
+      toast.success(t('Webhook created', 'Webhook נוצר'));
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to create webhook');
-      toast.error('Failed to create webhook', e?.message);
+      setErr(e?.message ?? t('Failed to create webhook', 'יצירת ה-Webhook נכשלה'));
+      toast.error(t('Failed to create webhook', 'יצירת ה-Webhook נכשלה'), e?.message);
     } finally {
       setBusy(false);
     }
@@ -93,20 +95,20 @@ export default function WebhooksPage() {
     try {
       await webhooksApi.update(wh.id, { active: !wh.active });
       refetch();
-      toast.success(wh.active ? 'Webhook disabled' : 'Webhook enabled');
+      toast.success(wh.active ? t('Webhook disabled', 'ה-Webhook בוטל') : t('Webhook enabled', 'ה-Webhook הופעל'));
     } catch (e: any) {
-      toast.error('Failed to toggle webhook', e?.message);
+      toast.error(t('Failed to toggle webhook', 'שינוי מצב ה-Webhook נכשל'), e?.message);
     }
   }
 
   async function remove(id: string) {
-    if (!confirm('Delete this webhook?')) return;
+    if (!confirm(t('Delete this webhook?', 'למחוק את ה-Webhook הזה?'))) return;
     try {
       await webhooksApi.delete(id);
       refetch();
-      toast.success('Webhook deleted');
+      toast.success(t('Webhook deleted', 'ה-Webhook נמחק'));
     } catch (e: any) {
-      toast.error('Failed to delete webhook', e?.message);
+      toast.error(t('Failed to delete webhook', 'מחיקת ה-Webhook נכשלה'), e?.message);
     }
   }
 
@@ -114,12 +116,12 @@ export default function WebhooksPage() {
     try {
       const r = await webhooksApi.test(id);
       if (r.success) {
-        toast.success('Test webhook delivered', `HTTP ${r.status} · ${r.durationMs}ms`);
+        toast.success(t('Test webhook delivered', 'בדיקת ה-Webhook נשלחה בהצלחה'), `HTTP ${r.status} · ${r.durationMs}ms`);
       } else {
-        toast.error('Webhook test failed', `HTTP ${r.status}`);
+        toast.error(t('Webhook test failed', 'בדיקת ה-Webhook נכשלה'), `HTTP ${r.status}`);
       }
     } catch (e: any) {
-      toast.error('Webhook test failed', e?.message);
+      toast.error(t('Webhook test failed', 'בדיקת ה-Webhook נכשלה'), e?.message);
     }
   }
 
@@ -140,11 +142,11 @@ export default function WebhooksPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Webhooks</h1>
-            <p className="page-subtitle">Send real-time event notifications to external services</p>
+            <h1 className="page-title">{t('Webhooks', 'Webhooks')}</h1>
+            <p className="page-subtitle">{t('Send real-time event notifications to external services', 'שלח התראות אירועים בזמן אמת לשירותים חיצוניים')}</p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + Add Webhook
+            + {t('Add Webhook', 'הוסף Webhook')}
           </button>
         </div>
       </header>
@@ -162,43 +164,55 @@ export default function WebhooksPage() {
             width: 'fit-content',
           }}
         >
-          {(['webhooks', 'deliveries'] as const).map((tab) => (
-            <button
-              key={tab}
-              onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '8px 20px',
-                borderRadius: 'var(--radius-sm)',
-                background: activeTab === tab ? 'var(--accent-primary)' : 'transparent',
-                color: activeTab === tab ? 'white' : 'var(--text-secondary)',
-                border: 'none',
-                cursor: 'pointer',
-                fontWeight: 600,
-                fontSize: '0.82rem',
-                fontFamily: 'inherit',
-                textTransform: 'capitalize',
-              }}
-            >
-              {tab}
-            </button>
-          ))}
+          <button
+            onClick={() => setActiveTab('webhooks')}
+            style={{
+              padding: '8px 20px',
+              borderRadius: 'var(--radius-sm)',
+              background: activeTab === 'webhooks' ? 'var(--accent-primary)' : 'transparent',
+              color: activeTab === 'webhooks' ? 'white' : 'var(--text-secondary)',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              fontFamily: 'inherit',
+            }}
+          >
+            {t('Webhooks', 'Webhooks')}
+          </button>
+          <button
+            onClick={() => setActiveTab('deliveries')}
+            style={{
+              padding: '8px 20px',
+              borderRadius: 'var(--radius-sm)',
+              background: activeTab === 'deliveries' ? 'var(--accent-primary)' : 'transparent',
+              color: activeTab === 'deliveries' ? 'white' : 'var(--text-secondary)',
+              border: 'none',
+              cursor: 'pointer',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              fontFamily: 'inherit',
+            }}
+          >
+            {t('Recent Deliveries', 'משלוחים אחרונים')}
+          </button>
         </div>
 
         {showCreate && (
           <div className="card" style={{ marginBottom: 'var(--space-xl)', border: '1px solid var(--border-active)' }}>
-            <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-lg)' }}>🔗 New Webhook</h3>
+            <h3 style={{ fontWeight: 700, marginBottom: 'var(--space-lg)' }}>🔗 {t('New Webhook', 'Webhook חדש')}</h3>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)', marginBottom: 'var(--space-md)' }}>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>Name</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>{t('Name', 'שם')}</label>
                 <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g., Slack Alerts" style={inputStyle} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>URL</label>
+                <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>{t('Webhook URL', 'כתובת Webhook')}</label>
                 <input type="url" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} placeholder="https://hooks.slack.com/..." style={inputStyle} />
               </div>
             </div>
             <div style={{ marginBottom: 'var(--space-lg)' }}>
-              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '8px' }}>Events</label>
+              <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '8px' }}>{t('Events', 'אירועים')}</label>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                 {ALL_EVENTS.map((ev) => (
                   <button
@@ -224,10 +238,10 @@ export default function WebhooksPage() {
             {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginBottom: 'var(--space-sm)' }}>{err}</div>}
             <div style={{ display: 'flex', gap: '8px' }}>
               <button className="btn btn-primary" onClick={save} disabled={busy || !newName || !newUrl || selectedEvents.length === 0}>
-                {busy ? 'Saving…' : 'Save Webhook'}
+                {busy ? t('Saving…', 'שומר…') : t('Save Webhook', 'שמור Webhook')}
               </button>
               <button className="btn btn-secondary" onClick={() => setShowCreate(false)}>
-                Cancel
+                {t('Cancel', 'ביטול')}
               </button>
             </div>
           </div>
@@ -237,9 +251,12 @@ export default function WebhooksPage() {
           (list.length === 0 ? (
             <EmptyState
               icon="🔗"
-              title="No webhooks configured"
-              description="Webhooks let you forward events (backup success, agent offline, alerts) to Slack, PagerDuty, or any HTTPS endpoint."
-              cta={{ label: '+ Add Webhook', onClick: () => setShowCreate(true) }}
+              title={t('No webhooks yet', 'אין Webhooks עדיין')}
+              description={t(
+                'Webhooks let you forward events (backup success, agent offline, alerts) to Slack, PagerDuty, or any HTTPS endpoint.',
+                'Webhooks מאפשרים להעביר אירועים (גיבוי הצליח, סוכן לא מקוון, התראות) ל-Slack, PagerDuty, או כל נקודת קצה HTTPS.'
+              )}
+              cta={{ label: `+ ${t('Add Webhook', 'הוסף Webhook')}`, onClick: () => setShowCreate(true) }}
             />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
@@ -276,21 +293,21 @@ export default function WebhooksPage() {
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
                     <StatusBadge status={wh.active ? 'ACTIVE' : 'DISABLED'} />
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                      {wh.successRate ?? 0}% success · {timeAgo(wh.lastTriggered)}
+                      {wh.successRate ?? 0}% {t('success', 'הצלחה')} · {timeAgo(wh.lastTriggered)}
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button className="btn btn-secondary btn-sm" onClick={() => test(wh.id)}>
-                      🧪 Test
+                      🧪 {t('Test', 'בדוק')}
                     </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => setEditing(wh)}>
-                      Edit
+                      {t('Edit', 'ערוך')}
                     </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => toggle(wh)}>
-                      {wh.active ? 'Disable' : 'Enable'}
+                      {wh.active ? t('Disable', 'בטל') : t('Enable', 'הפעל')}
                     </button>
                     <button className="btn btn-danger btn-sm" onClick={() => remove(wh.id)}>
-                      Delete
+                      {t('Delete', 'מחק')}
                     </button>
                   </div>
                 </div>
@@ -302,8 +319,11 @@ export default function WebhooksPage() {
           (deliveries.length === 0 ? (
             <EmptyState
               icon="📭"
-              title="No deliveries yet"
-              description="Deliveries appear here once your webhooks fire on real events."
+              title={t('No deliveries yet', 'אין משלוחים עדיין')}
+              description={t(
+                'Deliveries appear here once your webhooks fire on real events.',
+                'משלוחים יופיעו כאן ברגע שה-Webhooks שלך ירו על אירועים אמיתיים.'
+              )}
             />
           ) : (
             <div className="card">
@@ -311,11 +331,11 @@ export default function WebhooksPage() {
                 <table>
                   <thead>
                     <tr>
-                      <th>Webhook</th>
-                      <th>Event</th>
-                      <th>Status</th>
-                      <th>Duration</th>
-                      <th>Time</th>
+                      <th>{t('Webhook', 'Webhook')}</th>
+                      <th>{t('Event', 'אירוע')}</th>
+                      <th>{t('Status', 'סטטוס')}</th>
+                      <th>{t('Duration', 'משך')}</th>
+                      <th>{t('Time', 'זמן')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -346,7 +366,7 @@ export default function WebhooksPage() {
           onSaved={() => {
             setEditing(null);
             refetch();
-            toast.success('Webhook updated');
+            toast.success(t('Webhook updated', 'ה-Webhook עודכן'));
           }}
         />
       )}
@@ -363,6 +383,7 @@ function EditWebhookModal({
   onClose: () => void;
   onSaved: () => void;
 }) {
+  const t = useT();
   const toast = useToast();
   const [name, setName] = useState(webhook.name);
   const [url, setUrl] = useState(webhook.url);
@@ -381,8 +402,8 @@ function EditWebhookModal({
       await webhooksApi.update(webhook.id, { name, url, events });
       onSaved();
     } catch (e: any) {
-      setErr(e?.message ?? 'Failed to save');
-      toast.error('Failed to save webhook', e?.message);
+      setErr(e?.message ?? t('Failed to save', 'השמירה נכשלה'));
+      toast.error(t('Failed to save webhook', 'שמירת ה-Webhook נכשלה'), e?.message);
     } finally {
       setBusy(false);
     }
@@ -415,15 +436,15 @@ function EditWebhookModal({
       onClick={onClose}
     >
       <div className="card" style={{ maxWidth: 540, width: '90%' }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>Edit Webhook</h3>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>{t('Edit Webhook', 'ערוך Webhook')}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Name', 'שם')}</label>
           <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
 
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Delivery URL</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{t('Webhook URL', 'כתובת Webhook')}</label>
           <input type="url" className="input" value={url} onChange={(e) => setUrl(e.target.value)} />
 
-          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>Events</label>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>{t('Events', 'אירועים')}</label>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
             {ALL_EVENTS.map((ev) => (
               <button
@@ -451,10 +472,10 @@ function EditWebhookModal({
 
         <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
           <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
-            Cancel
+            {t('Cancel', 'ביטול')}
           </button>
           <button className="btn btn-sm btn-primary" onClick={save} disabled={busy || !name || !url || events.length === 0}>
-            {busy ? 'Saving…' : '💾 Save'}
+            {busy ? t('Saving…', 'שומר…') : `💾 ${t('Save', 'שמור')}`}
           </button>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { installer as installerApi, agents as agentsApi } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { useT } from '@/components/LocaleProvider';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3038/api/v1';
 
@@ -52,9 +53,12 @@ function formatBytes(b: number) {
 }
 
 export default function DownloadPage() {
+  const t = useT();
   const { data: installersData, loading, error } = useFetch<Installer[]>(() => installerApi.list() as Promise<Installer[]>);
   const [selected, setSelected] = useState<'windows' | 'linux' | 'macos'>('windows');
   const [token, setToken] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [oneLinerCopied, setOneLinerCopied] = useState(false);
   const [showToken, setShowToken] = useState(false);
   const [tokenLoading, setTokenLoading] = useState(false);
 
@@ -89,13 +93,32 @@ export default function DownloadPage() {
     }
   }
 
+  function handleCopyToken() {
+    navigator.clipboard.writeText(token);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  function handleCopyOneLiner() {
+    navigator.clipboard.writeText(meta.oneLiner(API_BASE, token));
+    setOneLinerCopied(true);
+    setTimeout(() => setOneLinerCopied(false), 2000);
+  }
+
+  const platformLabel = (p: string) => {
+    if (p === 'windows') return t('Windows', 'Windows');
+    if (p === 'linux') return t('Linux', 'Linux');
+    if (p === 'macos') return t('macOS', 'macOS');
+    return p.charAt(0).toUpperCase() + p.slice(1);
+  };
+
   return (
     <>
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Download Agent</h1>
-            <p className="page-subtitle">Install the backup agent on your machines</p>
+            <h1 className="page-title">{t('Download Agent', 'הורד סוכן')}</h1>
+            <p className="page-subtitle">{t('Install the backup agent on your machines', 'התקן את סוכן הגיבוי על המחשבים שלך')}</p>
           </div>
         </div>
       </header>
@@ -108,9 +131,15 @@ export default function DownloadPage() {
         )}
 
         {loading && installers.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading installers…</div>
+          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>
+            {t('Loading installers…', 'טוען מתקינים…')}
+          </div>
         ) : (
           <>
+            {/* Platform selector */}
+            <div style={{ marginBottom: 'var(--space-sm)', fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              {t('Select your platform', 'בחר פלטפורמה')}
+            </div>
             <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-xl)' }}>
               {(platforms.length > 0 ? platforms : ['windows', 'linux', 'macos']).map((p) => {
                 const m = PLATFORM_META[p];
@@ -131,7 +160,7 @@ export default function DownloadPage() {
                     }}
                   >
                     <div style={{ fontSize: '2.5rem', marginBottom: '8px' }}>{m.icon}</div>
-                    <div style={{ fontWeight: 700, fontSize: '1rem', textTransform: 'capitalize' }}>{p}</div>
+                    <div style={{ fontWeight: 700, fontSize: '1rem' }}>{platformLabel(p)}</div>
                     <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>{archs}</div>
                   </button>
                 );
@@ -139,14 +168,18 @@ export default function DownloadPage() {
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-lg)' }}>
+              {/* Download card */}
               <div className="card">
                 <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>
-                  {meta?.icon} {selected.charAt(0).toUpperCase() + selected.slice(1)} Agent
+                  {meta?.icon} {platformLabel(selected)} {t('Agent', 'סוכן')}
                 </h3>
 
                 {current.length === 0 ? (
                   <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    No installer available for this platform yet. Build artifacts will appear here once the CI pipeline publishes them.
+                    {t(
+                      'No installer available for this platform yet. Build artifacts will appear here once the CI pipeline publishes them.',
+                      'אין מתקין זמין לפלטפורמה זו עדיין. פריטי הבנייה יופיעו כאן לאחר פרסום ה-CI.'
+                    )}
                   </div>
                 ) : (
                   current.map((inst) => (
@@ -156,10 +189,13 @@ export default function DownloadPage() {
                         className="btn btn-primary"
                         style={{ width: '100%', justifyContent: 'center', padding: '14px', fontSize: '0.95rem', textDecoration: 'none', display: 'block' }}
                       >
-                        ⬇️ Download {inst.arch} ({formatBytes(inst.sizeBytes)})
+                        ⬇️ {t('Download', 'הורד')} {inst.arch} ({formatBytes(inst.sizeBytes)})
                       </a>
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                        Version v{inst.version}
+                        {t('Version', 'גרסה')} v{inst.version}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                        {t('Size', 'גודל')}: {formatBytes(inst.sizeBytes)}
                       </div>
                       <code
                         style={{
@@ -174,17 +210,23 @@ export default function DownloadPage() {
                           marginTop: '6px',
                         }}
                       >
-                        sha256: {inst.sha256}
+                        {t('SHA-256', 'SHA-256')}: {inst.sha256}
                       </code>
                     </div>
                   ))
                 )}
               </div>
 
+              {/* Registration Token card */}
               <div className="card">
-                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>🔑 Registration Token</h3>
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-lg)' }}>
+                  🔑 {t('Registration Token', 'טוקן רישום')}
+                </h3>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-lg)', lineHeight: 1.6 }}>
-                  Generate a one-time token to register the agent with this tenant. Tokens expire in 24 hours.
+                  {t(
+                    'Generate a one-time token to register the agent with this tenant. Tokens expire in 24 hours.',
+                    'צור טוקן חד-פעמי לרישום הסוכן עם הדייר הזה. הטוקנים פגים תוך 24 שעות.'
+                  )}
                 </p>
 
                 {showToken ? (
@@ -207,9 +249,9 @@ export default function DownloadPage() {
                     <button
                       className="btn btn-secondary btn-sm"
                       style={{ marginTop: 'var(--space-sm)', width: '100%', justifyContent: 'center' }}
-                      onClick={() => navigator.clipboard.writeText(token)}
+                      onClick={handleCopyToken}
                     >
-                      📋 Copy Token
+                      📋 {copied ? t('Copied!', 'הועתק!') : t('Copy', 'העתק')}
                     </button>
                   </div>
                 ) : (
@@ -219,21 +261,34 @@ export default function DownloadPage() {
                     disabled={tokenLoading}
                     style={{ width: '100%', justifyContent: 'center', marginBottom: 'var(--space-lg)' }}
                   >
-                    🔑 {tokenLoading ? 'Generating…' : 'Generate Token'}
+                    🔑 {tokenLoading ? t('Generating…', 'מייצר…') : t('Generate Token', 'צור טוקן')}
                   </button>
+                )}
+
+                {!showToken && (
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    {t('Select an agent to generate token', 'בחר סוכן ליצירת טוקן')}
+                  </p>
                 )}
               </div>
             </div>
 
+            {/* One-liner install card */}
             {meta && (
               <div className="card" style={{ marginTop: 'var(--space-lg)' }}>
-                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-md)', textTransform: 'capitalize' }}>
-                  ⚡ One-Liner Install — {selected}
+                <h3 style={{ fontWeight: 700, fontSize: '1rem', marginBottom: 'var(--space-md)' }}>
+                  ⚡ {t('One-liner install', 'התקנה בשורה אחת')} — {platformLabel(selected)}
                 </h3>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: 'var(--space-md)' }}>
                   {token
-                    ? 'Paste this into a terminal on the target machine. The agent will be downloaded, registered, and installed as a system service.'
-                    : 'Generate a registration token first, then this command will be filled in with your token.'}
+                    ? t(
+                        'Paste this into a terminal on the target machine. The agent will be downloaded, registered, and installed as a system service.',
+                        'הדבק זאת לטרמינל במחשב היעד. הסוכן יורד, יירשם ויותקן כשירות מערכת.'
+                      )
+                    : t(
+                        'Generate a registration token first, then this command will be filled in with your token.',
+                        'צור תחילה טוקן רישום, ואז הפקודה תמולא בטוקן שלך.'
+                      )}
                 </p>
                 <div style={{ position: 'relative' }}>
                   <code
@@ -257,12 +312,17 @@ export default function DownloadPage() {
                     <button
                       className="btn btn-sm btn-secondary"
                       style={{ position: 'absolute', top: '8px', right: '8px' }}
-                      onClick={() => navigator.clipboard.writeText(meta.oneLiner(API_BASE, token))}
+                      onClick={handleCopyOneLiner}
                     >
-                      📋
+                      {oneLinerCopied ? t('Copied!', 'הועתק!') : '📋'}
                     </button>
                   )}
                 </div>
+
+                {/* Silent install note */}
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>
+                  {t('Silent install', 'התקנה שקטה')}: {t('append', 'הוסף')} <code style={{ fontSize: '0.72rem' }}>-s</code> {t('to run without prompts.', 'להפעלה ללא הנחיות.')}
+                </p>
               </div>
             )}
           </>

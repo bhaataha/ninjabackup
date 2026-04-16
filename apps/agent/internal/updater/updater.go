@@ -16,6 +16,172 @@ import (
 	"time"
 )
 
+// updateSentinel is written to disk just before we restart into a new binary.
+// If we find it on startup within the grace window it means the previous update
+// binary may have crashed; we roll back automatically.
+type updateSentinel struct {
+	BackupPath  string    `json:"backupPath"`  // path to the .bak binary
+	AppliedAt   time.Time `json:"appliedAt"`   // when the update was applied
+	FromVersion string    `json:"fromVersion"` // the version we replaced
+	ToVersion   string    `json:"toVersion"`   // the version we attempted
+}
+
+func sentinelPath() string {
+	return filepath.Join(os.TempDir(), "ninjabackup_update_sentinel.json")
+}
+
+// writeSentinel persists the rollback metadata before we exec into the new binary.
+func writeSentinel(s updateSentinel) error {
+	b, err := json.MarshalIndent(s, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(sentinelPath(), b, 0600)
+}
+
+// readSentinel loads the sentinel file if it exists.
+func readSentinel() (*updateSentinel, error) {
+	b, err := os.ReadFile(sentinelPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var s updateSentinel
+	if err := json.Unmarshal(b, &s); err != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+// removeSentinel deletes the sentinel file (called once startup is healthy).
+func removeSentinel() {
+	os.Remove(sentinelPath())
+}
+
+// CheckUpdateSentinel should be called early in main(), after basic services
+// are up. If a sentinel from a previous update attempt is found AND it was
+// written less than graceWindow ago, we assume the new binary crashed on first
+// run and we roll the old binary back.
+//
+// Returns true if a rollback was performed (the process will restart and
+// callers should exit).
+func CheckUpdateSentinel(graceWindow time.Duration) bool {
+	s, err := readSentinel()
+	if err != nil {
+		log.Printf("[updater] could not read sentinel: %v", err)
+		removeSentinel() // corrupt sentinel — remove it
+		return false
+	}
+	if s == nil {
+		return false // no pending update
+	}
+
+	age := time.Since(s.AppliedAt)
+	if age > graceWindow {
+		// The previous update ran long enough; it probably worked. Clean up.
+		log.Printf("[updater] update sentinel is %s old (> %s grace) — assuming healthy, removing", age.Round(time.Second), graceWindow)
+		removeSentinel()
+		return false
+	}
+
+	// Sentinel is fresh → the previous binary appears to have crashed quickly.
+	log.Printf("[updater] ⚠️  update sentinel found (%s old) — rolling back from v%s to v%s",
+		age.Round(time.Millisecond), s.ToVersion, s.FromVersion)
+
+	if err := performRollback(s.BackupPath); err != nil {
+		log.Printf("[updater] rollback failed: %v — manual intervention required (backup at %s)", err, s.BackupPath)
+		removeSentinel() // don't loop forever
+		return false
+	}
+
+	log.Println("[updater] rollback applied — restarting service")
+	removeSentinel()
+	return true
+}
+
+// MarkStartupHealthy removes the update sentinel once the agent has been running
+// long enough that we consider the new binary stable. Call this after your
+// health-check window has passed (e.g. 2 minutes after a successful startup).
+func MarkStartupHealthy() {
+	p := sentinelPath()
+	if _, err := os.Stat(p); os.IsNotExist(err) {
+		return // nothing to do
+	}
+	removeSentinel()
+	log.Println("[updater] startup health confirmed — update sentinel cleared")
+}
+
+// performRollback swaps the backup binary back into place and restarts.
+func performRollback(backupPath string) error {
+	if runtime.GOOS == "windows" {
+		return performWindowsRollback(backupPath)
+	}
+	return performUnixRollback(backupPath)
+}
+
+func performUnixRollback(backupPath string) error {
+	currentPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable: %w", err)
+	}
+	currentPath, err = filepath.EvalSymlinks(currentPath)
+	if err != nil {
+		return fmt.Errorf("resolve symlinks: %w", err)
+	}
+
+	if _, err := os.Stat(backupPath); err != nil {
+		return fmt.Errorf("backup binary not found at %s: %w", backupPath, err)
+	}
+
+	// Remove the broken new binary and restore the old one.
+	if err := os.Remove(currentPath); err != nil {
+		return fmt.Errorf("remove broken binary: %w", err)
+	}
+	if err := os.Rename(backupPath, currentPath); err != nil {
+		return fmt.Errorf("restore backup binary: %w", err)
+	}
+	if err := os.Chmod(currentPath, 0755); err != nil {
+		log.Printf("[updater] chmod after rollback: %v (non-fatal)", err)
+	}
+
+	u := &Updater{}
+	return u.restartService()
+}
+
+func performWindowsRollback(backupPath string) error {
+	currentPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("get executable: %w", err)
+	}
+
+	if _, err := os.Stat(backupPath); err != nil {
+		return fmt.Errorf("backup binary not found at %s: %w", backupPath, err)
+	}
+
+	batchContent := fmt.Sprintf(`@echo off
+:retry
+timeout /t 2 /nobreak >nul
+tasklist /fi "imagename=%s" | find /i "%s" >nul
+if not errorlevel 1 goto retry
+copy /y "%s" "%s"
+del "%s"
+net start NinjaBackup
+del "%%~f0"
+`, filepath.Base(currentPath), filepath.Base(currentPath), backupPath, currentPath, backupPath)
+
+	batchPath := filepath.Join(os.TempDir(), "ninjabackup_rollback.bat")
+	if err := os.WriteFile(batchPath, []byte(batchContent), 0644); err != nil {
+		return fmt.Errorf("write rollback script: %w", err)
+	}
+	cmd := exec.Command("cmd.exe", "/c", "start", "/b", batchPath)
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("start rollback script: %w", err)
+	}
+	return nil
+}
+
 // UpdateInfo contains version information from the server
 type UpdateInfo struct {
 	Version     string `json:"version"`
@@ -131,8 +297,10 @@ func (u *Updater) DownloadUpdate(update *UpdateInfo) (string, error) {
 	return tmpFile.Name(), nil
 }
 
-// ApplyUpdate replaces the current binary with the new one
-func (u *Updater) ApplyUpdate(newBinaryPath string) error {
+// ApplyUpdate replaces the current binary with the new one.
+// On Unix it writes a rollback sentinel before restarting so that if the new
+// binary crashes within the grace window the agent can automatically revert.
+func (u *Updater) ApplyUpdate(newBinaryPath string, update *UpdateInfo) error {
 	currentPath, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("get executable path: %w", err)
@@ -146,12 +314,23 @@ func (u *Updater) ApplyUpdate(newBinaryPath string) error {
 	log.Printf("Applying update: %s -> %s", newBinaryPath, currentPath)
 
 	if runtime.GOOS == "windows" {
-		// Windows can't replace a running binary directly
-		// Use a batch script to replace after exit
+		// Windows can't replace a running binary directly.
+		// Use a batch script to replace after exit.
+		// Write sentinel so that if the new binary crashes on the first
+		// Windows start we have enough info to diagnose (rollback batch
+		// handles the rest).
+		backupPath := filepath.Join(os.TempDir(), filepath.Base(currentPath)+".bak")
+		_ = writeSentinel(updateSentinel{
+			BackupPath:  backupPath,
+			AppliedAt:   time.Now(),
+			FromVersion: u.currentVersion,
+			ToVersion:   update.Version,
+		})
 		return u.windowsUpdate(currentPath, newBinaryPath)
 	}
 
-	// Unix: rename the old binary, move new one in, restart
+	// Unix: rename the old binary aside, move new one in, write sentinel,
+	// then restart.
 	backupPath := currentPath + ".bak"
 	os.Remove(backupPath) // clean up any previous backup
 
@@ -160,9 +339,19 @@ func (u *Updater) ApplyUpdate(newBinaryPath string) error {
 	}
 
 	if err := os.Rename(newBinaryPath, currentPath); err != nil {
-		// Rollback
+		// Swap failed — restore immediately without restarting.
 		os.Rename(backupPath, currentPath)
 		return fmt.Errorf("replace binary: %w", err)
+	}
+
+	// Persist rollback metadata BEFORE we hand off to the new binary.
+	if err := writeSentinel(updateSentinel{
+		BackupPath:  backupPath,
+		AppliedAt:   time.Now(),
+		FromVersion: u.currentVersion,
+		ToVersion:   update.Version,
+	}); err != nil {
+		log.Printf("[updater] warning: could not write rollback sentinel: %v", err)
 	}
 
 	log.Println("Update applied successfully. Restarting...")
@@ -235,7 +424,7 @@ func (u *Updater) StartAutoUpdateLoop(interval time.Duration) {
 			continue
 		}
 
-		if err := u.ApplyUpdate(tmpPath); err != nil {
+		if err := u.ApplyUpdate(tmpPath, update); err != nil {
 			log.Printf("Update failed: %v", err)
 			os.Remove(tmpPath)
 			continue

@@ -243,6 +243,9 @@ export const snapshots = {
   getById: (id: string) => request<any>('GET', `/snapshots/${id}`),
   browse: (id: string, path: string) =>
     request<any>('GET', `/snapshots/${id}/browse?path=${encodeURIComponent(path)}`),
+  delete: (id: string) => request<void>('DELETE', `/snapshots/${id}`),
+  deleteBulk: (ids: string[]) =>
+    request<{ deleted: number }>('POST', `/snapshots/bulk-delete`, { ids }),
 };
 
 // ─── Restore ─────────────────────────────────────────────
@@ -331,11 +334,29 @@ export const reports = {
 
 // ─── Notifications ───────────────────────────────────────
 
+export const NOTIFICATION_EVENTS = [
+  'BACKUP_SUCCESS',
+  'BACKUP_FAILED',
+  'AGENT_OFFLINE',
+  'STORAGE_WARNING',
+  'RESTORE_COMPLETE',
+] as const;
+export type NotifEvent = (typeof NOTIFICATION_EVENTS)[number];
+export interface EventPrefs { email: boolean; inApp: boolean }
+export interface NotificationPrefs {
+  emailEnabled: boolean;
+  inAppEnabled: boolean;
+  events: Partial<Record<NotifEvent, EventPrefs>>;
+}
+
 export const notifications = {
   list: () => request<any[]>('GET', '/notifications'),
   markRead: (id: string) => request<void>('POST', `/notifications/${id}/read`),
   markAllRead: () => request<void>('POST', '/notifications/read-all'),
   unreadCount: () => request<{ count: number }>('GET', '/notifications/unread-count'),
+  getPrefs: () => request<NotificationPrefs>('GET', '/notifications/prefs'),
+  savePrefs: (prefs: Partial<NotificationPrefs>) =>
+    request<NotificationPrefs>('PUT', '/notifications/prefs', prefs),
 };
 
 // ─── Snapshot file browse / versions ─────────────────────

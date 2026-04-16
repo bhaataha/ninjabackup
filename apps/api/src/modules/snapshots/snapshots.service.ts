@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { createHmac } from 'node:crypto';
 
@@ -116,6 +116,37 @@ export class SnapshotsService {
       url: `${base}/api/v1/snapshots/${snapshot.id}/file?${qs.toString()}`,
       expiresAt: expiresAt.toISOString(),
     };
+  }
+
+  /** Delete a single snapshot (tenant-scoped). Locked snapshots are refused. */
+  async deleteOne(tenantId: string, id: string): Promise<void> {
+    const snapshot = await this.prisma.snapshot.findFirst({
+      where: { id, job: { agent: { tenantId } } },
+      select: { id: true, isLocked: true },
+    });
+    if (!snapshot) throw new NotFoundException('Snapshot not found');
+    if (snapshot.isLocked) throw new ForbiddenException('Snapshot is locked and cannot be deleted');
+    await this.prisma.snapshot.delete({ where: { id } });
+  }
+
+  /** Delete multiple snapshots in one go. Locked snapshots are skipped. */
+  async deleteBulk(tenantId: string, ids: string[]): Promise<{ deleted: number }> {
+    // Resolve the IDs that actually belong to this tenant and are not locked.
+    const snapshots = await this.prisma.snapshot.findMany({
+      where: {
+        id: { in: ids },
+        isLocked: false,
+        job: { agent: { tenantId } },
+      },
+      select: { id: true },
+    });
+    const safeIds = snapshots.map((s) => s.id);
+    if (safeIds.length === 0) return { deleted: 0 };
+
+    const { count } = await this.prisma.snapshot.deleteMany({
+      where: { id: { in: safeIds } },
+    });
+    return { deleted: count };
   }
 
   private serialize(s: any) {
