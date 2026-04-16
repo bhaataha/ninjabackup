@@ -198,6 +198,7 @@ export const policies = {
   delete: (id: string) => request<void>('DELETE', `/policies/${id}`),
   assignAgent: (id: string, agentId: string) => request<any>('POST', `/policies/${id}/agents/${agentId}`),
   unassignAgent: (id: string, agentId: string) => request<void>('DELETE', `/policies/${id}/agents/${agentId}`),
+  getAgents: (id: string) => request<{ agentIds: string[] } | any[]>('GET', `/policies/${id}/agents`),
 };
 
 // ─── Jobs ────────────────────────────────────────────────

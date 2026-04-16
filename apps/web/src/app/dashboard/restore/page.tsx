@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { snapshots as snapshotsApi, restore as restoreApi, files as filesApi, agents as agentsApi } from '@/lib/api';
+// filesApi is imported above; no additional imports needed for VersionsModal.
 
 type Snapshot = {
   id: string;
@@ -60,6 +61,7 @@ export default function RestorePage() {
   const [currentPath, setCurrentPath] = useState<string[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [showRestoreModal, setShowRestoreModal] = useState(false);
+  const [versionsFor, setVersionsFor] = useState<string | null>(null);
 
   const agents = agentsData ?? [];
   const snapshots = snapshotsData ?? [];
@@ -324,7 +326,8 @@ export default function RestorePage() {
                             </td>
                             <td>
                               {item.versions && item.versions > 1 ? (
-                                <span
+                                <button
+                                  onClick={() => setVersionsFor(fullPath)}
                                   style={{
                                     padding: '2px 8px',
                                     borderRadius: '4px',
@@ -332,10 +335,14 @@ export default function RestorePage() {
                                     fontWeight: 600,
                                     background: 'var(--accent-glow)',
                                     color: 'var(--accent-primary)',
+                                    border: 'none',
+                                    cursor: 'pointer',
+                                    fontFamily: 'inherit',
                                   }}
+                                  title="Show previous versions"
                                 >
                                   📚 {item.versions} versions
-                                </span>
+                                </button>
                               ) : (
                                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>1</span>
                               )}
@@ -343,13 +350,22 @@ export default function RestorePage() {
                             <td>
                               <div style={{ display: 'flex', gap: '4px' }}>
                                 {item.type === 'file' && (
-                                  <button
-                                    className="btn btn-sm btn-secondary"
-                                    onClick={() => downloadFile(fullPath)}
-                                    title="Download via pre-signed URL"
-                                  >
-                                    ⬇️
-                                  </button>
+                                  <>
+                                    <button
+                                      className="btn btn-sm btn-secondary"
+                                      onClick={() => downloadFile(fullPath)}
+                                      title="Download via pre-signed URL"
+                                    >
+                                      ⬇️
+                                    </button>
+                                    <button
+                                      className="btn btn-sm btn-secondary"
+                                      onClick={() => setVersionsFor(fullPath)}
+                                      title="Show versions"
+                                    >
+                                      📚
+                                    </button>
+                                  </>
                                 )}
                               </div>
                             </td>
@@ -404,8 +420,115 @@ export default function RestorePage() {
             }}
           />
         )}
+        {versionsFor && snapshotId && (
+          <VersionsModal snapshotId={snapshotId} path={versionsFor} onClose={() => setVersionsFor(null)} />
+        )}
       </div>
     </>
+  );
+}
+
+function VersionsModal({
+  snapshotId,
+  path,
+  onClose,
+}: {
+  snapshotId: string;
+  path: string;
+  onClose: () => void;
+}) {
+  const { data, loading, error } = useFetch<any[]>(
+    () => filesApi.versions(snapshotId, path) as Promise<any[]>,
+    [snapshotId, path],
+  );
+
+  async function download(versionSnapshotId: string) {
+    try {
+      const r = await filesApi.download(versionSnapshotId, path);
+      window.open(r.url, '_blank');
+    } catch (e: any) {
+      alert(`Download failed: ${e?.message ?? 'unknown'}`);
+    }
+  }
+
+  const versions = data ?? [];
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 620, width: '90%', maxHeight: '80vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-sm)' }}>
+          📚 File Version History
+        </h3>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontFamily: 'monospace', marginBottom: 'var(--space-md)' }}>
+          {path}
+        </div>
+
+        {loading ? (
+          <div style={{ padding: 'var(--space-lg)', textAlign: 'center', color: 'var(--text-muted)' }}>Loading versions…</div>
+        ) : error ? (
+          <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
+        ) : versions.length === 0 ? (
+          <div style={{ padding: 'var(--space-lg)', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No versions found (only one snapshot contains this file).
+          </div>
+        ) : (
+          <table style={{ width: '100%', fontSize: '0.85rem' }}>
+            <thead>
+              <tr style={{ borderBottom: '1px solid var(--border-default)' }}>
+                <th style={{ textAlign: 'left', padding: '8px 4px' }}>Date</th>
+                <th style={{ textAlign: 'left', padding: '8px 4px' }}>Size</th>
+                <th style={{ textAlign: 'left', padding: '8px 4px' }}>Snapshot</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody>
+              {versions.map((v: any) => (
+                <tr key={v.snapshotId} style={{ borderBottom: '1px solid var(--border-glass)' }}>
+                  <td style={{ padding: '8px 4px' }}>
+                    {new Date(v.modified ?? v.createdAt).toLocaleString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}
+                  </td>
+                  <td style={{ padding: '8px 4px' }}>
+                    {v.sizeBytes ? `${(Number(v.sizeBytes) / 1024 / 1024).toFixed(2)} MB` : '—'}
+                  </td>
+                  <td style={{ padding: '8px 4px', fontFamily: 'monospace', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {v.snapshotId?.slice(0, 12)}
+                  </td>
+                  <td style={{ padding: '8px 4px', textAlign: 'right' }}>
+                    <button className="btn btn-sm btn-secondary" onClick={() => download(v.snapshotId)}>
+                      ⬇️ Download
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 

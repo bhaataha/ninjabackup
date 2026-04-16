@@ -72,6 +72,16 @@ export class PoliciesService {
     return { unassigned: true };
   }
 
+  async listAssignedAgents(tenantId: string, policyId: string) {
+    const policy = await this.prisma.backupPolicy.findFirst({ where: { id: policyId, tenantId } });
+    if (!policy) throw new NotFoundException('Policy not found');
+    const rows = await this.prisma.agentPolicy.findMany({
+      where: { policyId, agent: { tenantId } },
+      select: { agent: { select: { id: true, hostname: true, displayName: true, status: true, osType: true } } },
+    });
+    return { agentIds: rows.map((r) => r.agent.id), agents: rows.map((r) => r.agent) };
+  }
+
   /**
    * Return enabled policies assigned to an agent, shaped for the agent runtime
    * (no encrypted credentials, only fields the agent needs to schedule + run).

@@ -42,7 +42,13 @@ export class PoliciesController {
     return this.policiesService.update(tid, id, dto);
   }
 
-  @Post(':id/assign/:agentId')
+  @Get(':id/agents')
+  @ApiOperation({ summary: 'List agents this policy is assigned to' })
+  async listAgents(@TenantId() tid: string, @Param('id') id: string) {
+    return this.policiesService.listAssignedAgents(tid, id);
+  }
+
+  @Post(':id/agents/:agentId')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN', 'OPERATOR')
   @ApiOperation({ summary: 'Assign policy to an agent' })
@@ -50,11 +56,26 @@ export class PoliciesController {
     return this.policiesService.assignToAgent(tid, id, agentId);
   }
 
-  @Delete(':id/assign/:agentId')
+  @Delete(':id/agents/:agentId')
   @UseGuards(RolesGuard)
   @Roles('OWNER', 'ADMIN', 'OPERATOR')
   @ApiOperation({ summary: 'Unassign policy from an agent' })
   async unassign(@TenantId() tid: string, @Param('id') id: string, @Param('agentId') agentId: string) {
+    return this.policiesService.unassignFromAgent(tid, id, agentId);
+  }
+
+  // Legacy /assign/:agentId routes kept for backward compatibility
+  @Post(':id/assign/:agentId')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'OPERATOR')
+  async legacyAssign(@TenantId() tid: string, @Param('id') id: string, @Param('agentId') agentId: string) {
+    return this.policiesService.assignToAgent(tid, id, agentId);
+  }
+
+  @Delete(':id/assign/:agentId')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'OPERATOR')
+  async legacyUnassign(@TenantId() tid: string, @Param('id') id: string, @Param('agentId') agentId: string) {
     return this.policiesService.unassignFromAgent(tid, id, agentId);
   }
 

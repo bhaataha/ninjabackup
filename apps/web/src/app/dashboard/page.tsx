@@ -5,7 +5,7 @@ import ActivityFeed from '@/components/ActivityFeed';
 import AreaChart from '@/components/AreaChart';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
-import { agents as agentsApi, jobs as jobsApi, storage as storageApi } from '@/lib/api';
+import { agents as agentsApi, jobs as jobsApi, storage as storageApi, reports as reportsApi } from '@/lib/api';
 
 type Agent = {
   id: string;
@@ -67,6 +67,16 @@ export default function DashboardPage() {
   const { data: agentsData } = useFetch<Agent[]>(() => agentsApi.list() as Promise<Agent[]>, [], { interval: 15_000 });
   const { data: jobsData } = useFetch<Job[]>(() => jobsApi.list() as Promise<Job[]>, [], { interval: 10_000 });
   const { data: vaultsData } = useFetch<Vault[]>(() => storageApi.list() as Promise<Vault[]>);
+  const { data: successRateData } = useFetch<{ labels: string[]; values: number[]; rate: number }>(
+    () => reportsApi.successRate(14),
+    [],
+    { interval: 5 * 60_000 },
+  );
+  const { data: summaryData } = useFetch<{ dailyStats: { date: string; dataGb: number }[] }>(
+    () => reportsApi.summary({ from: new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) }) as any,
+    [],
+    { interval: 5 * 60_000 },
+  );
   const { jobProgress, agentStatuses } = useSocket({ tenantId: 'current' });
 
   useEffect(() => {
@@ -295,24 +305,46 @@ export default function DashboardPage() {
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">Backup Success Rate (14 days)</h2>
+              {successRateData && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--accent-success)', fontWeight: 700 }}>
+                  {successRateData.rate}%
+                </span>
+              )}
             </div>
-            <AreaChart
-              data={[12, 14, 13, 15, 14, 12, 13, 15, 14, 16, 15, 14, 15, 14]}
-              color="#10b981"
-              height={140}
-              labels={['Apr 1', 'Apr 2', 'Apr 3', 'Apr 4', 'Apr 5', 'Apr 6', 'Apr 7', 'Apr 8', 'Apr 9', 'Apr 10', 'Apr 11', 'Apr 12', 'Apr 13', 'Apr 14']}
-            />
+            {successRateData && successRateData.values.length > 0 ? (
+              <AreaChart
+                data={successRateData.values}
+                color="#10b981"
+                height={140}
+                labels={successRateData.labels.map((l) => l.slice(5))}
+              />
+            ) : (
+              <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                No backup data yet
+              </div>
+            )}
           </div>
           <div className="card">
             <div className="card-header">
               <h2 className="card-title">Data Protected (GB/day)</h2>
+              {summaryData?.dailyStats?.length && (
+                <span style={{ fontSize: '0.78rem', color: 'var(--accent-primary)', fontWeight: 700 }}>
+                  +{summaryData.dailyStats[summaryData.dailyStats.length - 1]?.dataGb ?? 0} GB today
+                </span>
+              )}
             </div>
-            <AreaChart
-              data={[85, 92, 88, 95, 102, 89, 94, 110, 105, 98, 115, 108, 120, 118]}
-              color="#3b82f6"
-              height={140}
-              labels={['Apr 1', 'Apr 2', 'Apr 3', 'Apr 4', 'Apr 5', 'Apr 6', 'Apr 7', 'Apr 8', 'Apr 9', 'Apr 10', 'Apr 11', 'Apr 12', 'Apr 13', 'Apr 14']}
-            />
+            {summaryData?.dailyStats && summaryData.dailyStats.length > 0 ? (
+              <AreaChart
+                data={summaryData.dailyStats.map((d) => d.dataGb)}
+                color="#3b82f6"
+                height={140}
+                labels={summaryData.dailyStats.map((d) => d.date)}
+              />
+            ) : (
+              <div style={{ height: 140, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)' }}>
+                No backup data yet
+              </div>
+            )}
           </div>
         </div>
 

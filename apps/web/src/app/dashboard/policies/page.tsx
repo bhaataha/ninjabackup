@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
-import { policies as policiesApi } from '@/lib/api';
+import { policies as policiesApi, agents as agentsApi } from '@/lib/api';
 
 type Retention = { daily?: number; weekly?: number; monthly?: number; yearly?: number };
 type Policy = {
@@ -34,6 +34,8 @@ function humanizeCron(cron: string): string {
 export default function PoliciesPage() {
   const { data, loading, error, refetch } = useFetch<Policy[]>(() => policiesApi.list() as Promise<Policy[]>);
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<Policy | null>(null);
+  const [managing, setManaging] = useState<Policy | null>(null);
 
   const policies = data ?? [];
 
@@ -213,11 +215,28 @@ export default function PoliciesPage() {
                     borderTop: '1px solid var(--border-default)',
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                    🖥️ {policy.agentCount ?? 0} agents assigned
-                  </div>
+                  <button
+                    onClick={() => setManaging(policy)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      fontSize: '0.8rem',
+                      color: 'var(--text-muted)',
+                      background: 'none',
+                      border: 'none',
+                      cursor: 'pointer',
+                      padding: 0,
+                      fontFamily: 'inherit',
+                    }}
+                    title="Manage agent assignments"
+                  >
+                    🖥️ {policy.agentCount ?? 0} agents assigned →
+                  </button>
                   <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
-                    <button className="btn btn-sm btn-secondary">Edit</button>
+                    <button className="btn btn-sm btn-secondary" onClick={() => setEditing(policy)}>
+                      Edit
+                    </button>
                     <button className="btn btn-sm btn-danger" onClick={() => remove(policy.id)}>
                       Delete
                     </button>
@@ -230,6 +249,25 @@ export default function PoliciesPage() {
       </div>
 
       {showCreate && <CreatePolicyModal onClose={() => setShowCreate(false)} onCreated={() => { setShowCreate(false); refetch(); }} />}
+      {editing && (
+        <EditPolicyModal
+          policy={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            refetch();
+          }}
+        />
+      )}
+      {managing && (
+        <ManageAgentsModal
+          policy={managing}
+          onClose={() => setManaging(null)}
+          onChanged={() => {
+            refetch();
+          }}
+        />
+      )}
     </>
   );
 }
@@ -313,6 +351,238 @@ function CreatePolicyModal({ onClose, onCreated }: { onClose: () => void; onCrea
           </button>
           <button className="btn btn-sm btn-primary" onClick={submit} disabled={busy}>
             {busy ? 'Creating…' : 'Create'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EditPolicyModal({
+  policy,
+  onClose,
+  onSaved,
+}: {
+  policy: Policy;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(policy.name);
+  const [schedule, setSchedule] = useState(policy.schedule);
+  const [includePaths, setIncludePaths] = useState((policy.includePaths ?? []).join(', '));
+  const [excludePaths, setExcludePaths] = useState((policy.excludePaths ?? []).join(', '));
+  const [daily, setDaily] = useState(policy.retention?.daily ?? 7);
+  const [weekly, setWeekly] = useState(policy.retention?.weekly ?? 4);
+  const [monthly, setMonthly] = useState(policy.retention?.monthly ?? 12);
+  const [yearly, setYearly] = useState(policy.retention?.yearly ?? 1);
+  const [compression, setCompression] = useState(policy.compression ?? true);
+  const [vss, setVss] = useState(policy.vss ?? true);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await policiesApi.update(policy.id, {
+        name,
+        schedule,
+        includePaths: includePaths.split(',').map((s) => s.trim()).filter(Boolean),
+        excludePaths: excludePaths.split(',').map((s) => s.trim()).filter(Boolean),
+        retention: { daily, weekly, monthly, yearly },
+        compression,
+        vss,
+      });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to save policy');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 560, width: '90%', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>Edit Policy · {policy.type}</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name</label>
+          <input value={name} onChange={(e) => setName(e.target.value)} className="input" />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Schedule (cron)</label>
+          <input value={schedule} onChange={(e) => setSchedule(e.target.value)} className="input" placeholder="0 2 * * *" />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Include paths (comma-separated)</label>
+          <input value={includePaths} onChange={(e) => setIncludePaths(e.target.value)} className="input" />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Exclude patterns (comma-separated)</label>
+          <input value={excludePaths} onChange={(e) => setExcludePaths(e.target.value)} className="input" placeholder="*.tmp, node_modules, .git" />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>Retention</label>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 'var(--space-sm)' }}>
+            <RetentionField label="Daily" value={daily} onChange={setDaily} />
+            <RetentionField label="Weekly" value={weekly} onChange={setWeekly} />
+            <RetentionField label="Monthly" value={monthly} onChange={setMonthly} />
+            <RetentionField label="Yearly" value={yearly} onChange={setYearly} />
+          </div>
+
+          <div style={{ display: 'flex', gap: 'var(--space-md)', marginTop: 'var(--space-sm)' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={compression} onChange={(e) => setCompression(e.target.checked)} />
+              Compression
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={vss} onChange={(e) => setVss(e.target.checked)} />
+              VSS (Windows Shadow Copy)
+            </label>
+          </div>
+        </div>
+        {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: 'var(--space-sm)' }}>{err}</div>}
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={save} disabled={busy}>
+            {busy ? 'Saving…' : '💾 Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RetentionField({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  return (
+    <div>
+      <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '4px' }}>{label}</div>
+      <input
+        type="number"
+        min={0}
+        value={value}
+        onChange={(e) => onChange(parseInt(e.target.value) || 0)}
+        className="input"
+        style={{ textAlign: 'center', fontWeight: 600 }}
+      />
+    </div>
+  );
+}
+
+function ManageAgentsModal({
+  policy,
+  onClose,
+  onChanged,
+}: {
+  policy: Policy;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const { data: agentsData, loading } = useFetch<any[]>(() => agentsApi.list());
+  const { data: assignmentData, refetch } = useFetch<{ agentIds: string[] } | string[] | any>(() =>
+    policiesApi.getAgents(policy.id).catch(() => ({ agentIds: [] })),
+  );
+  const [busy, setBusy] = useState<string | null>(null);
+
+  const agents = agentsData ?? [];
+  const assignedIds: string[] = Array.isArray(assignmentData)
+    ? (assignmentData as any[]).map((a) => a.id ?? a)
+    : (assignmentData?.agentIds ?? []);
+
+  async function toggle(agentId: string, currentlyAssigned: boolean) {
+    setBusy(agentId);
+    try {
+      if (currentlyAssigned) {
+        await policiesApi.unassignAgent(policy.id, agentId);
+      } else {
+        await policiesApi.assignAgent(policy.id, agentId);
+      }
+      refetch();
+      onChanged();
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 540, width: '90%', maxHeight: '80vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-sm)' }}>
+          Assign Agents · {policy.name}
+        </h3>
+        <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: 'var(--space-md)' }}>
+          Toggle which agents run this policy on their schedule.
+        </p>
+
+        {loading ? (
+          <div style={{ padding: 'var(--space-lg)', textAlign: 'center', color: 'var(--text-muted)' }}>Loading agents…</div>
+        ) : agents.length === 0 ? (
+          <div style={{ padding: 'var(--space-lg)', textAlign: 'center', color: 'var(--text-muted)' }}>
+            No agents registered yet.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            {agents.map((a: any) => {
+              const isAssigned = assignedIds.includes(a.id);
+              return (
+                <label
+                  key={a.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    padding: '10px var(--space-md)',
+                    borderRadius: 'var(--radius-md)',
+                    background: isAssigned ? 'var(--accent-glow)' : 'rgba(255,255,255,0.02)',
+                    border: `1px solid ${isAssigned ? 'var(--border-active)' : 'var(--border-glass)'}`,
+                    cursor: busy === a.id ? 'wait' : 'pointer',
+                    opacity: busy === a.id ? 0.6 : 1,
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isAssigned}
+                    disabled={busy === a.id}
+                    onChange={() => toggle(a.id, isAssigned)}
+                  />
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{a.displayName ?? a.hostname}</div>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                      {a.hostname} · {a.osType}
+                    </div>
+                  </div>
+                  <span className={`status-badge ${a.status === 'ONLINE' ? 'online' : 'offline'}`}>{a.status}</span>
+                </label>
+              );
+            })}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose}>
+            Done
           </button>
         </div>
       </div>
