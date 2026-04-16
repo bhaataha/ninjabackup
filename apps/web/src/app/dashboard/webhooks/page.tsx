@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { webhooks as webhooksApi } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { StatusBadge, Badge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState } from '@/components/EmptyState';
 
 type Webhook = {
   id: string;
@@ -232,9 +235,12 @@ export default function WebhooksPage() {
 
         {activeTab === 'webhooks' &&
           (list.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 600 }}>No webhooks configured</div>
-            </div>
+            <EmptyState
+              icon="🔗"
+              title="No webhooks configured"
+              description="Webhooks let you forward events (backup success, agent offline, alerts) to Slack, PagerDuty, or any HTTPS endpoint."
+              cta={{ label: '+ Add Webhook', onClick: () => setShowCreate(true) }}
+            />
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
               {list.map((wh) => (
@@ -261,24 +267,14 @@ export default function WebhooksPage() {
                     </div>
                     <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                       {wh.events.map((ev) => (
-                        <span
-                          key={ev}
-                          style={{
-                            padding: '2px 6px',
-                            borderRadius: '4px',
-                            fontSize: '0.65rem',
-                            fontWeight: 600,
-                            background: 'rgba(59, 130, 246, 0.08)',
-                            color: 'var(--accent-primary)',
-                          }}
-                        >
+                        <Badge key={ev} tone="primary" size="xs">
                           {ev}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   </div>
                   <div style={{ textAlign: 'right', flexShrink: 0 }}>
-                    <span className={`status-badge ${wh.active ? 'online' : 'offline'}`}>{wh.active ? 'Active' : 'Disabled'}</span>
+                    <StatusBadge status={wh.active ? 'ACTIVE' : 'DISABLED'} />
                     <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                       {wh.successRate ?? 0}% success · {timeAgo(wh.lastTriggered)}
                     </div>
@@ -302,11 +298,15 @@ export default function WebhooksPage() {
             </div>
           ))}
 
-        {activeTab === 'deliveries' && (
-          <div className="card">
-            {deliveries.length === 0 ? (
-              <div style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>No deliveries yet.</div>
-            ) : (
+        {activeTab === 'deliveries' &&
+          (deliveries.length === 0 ? (
+            <EmptyState
+              icon="📭"
+              title="No deliveries yet"
+              description="Deliveries appear here once your webhooks fire on real events."
+            />
+          ) : (
+            <div className="card">
               <div className="table-container" style={{ border: 'none' }}>
                 <table>
                   <thead>
@@ -326,7 +326,7 @@ export default function WebhooksPage() {
                           <code style={{ padding: '2px 8px', background: 'var(--bg-input)', borderRadius: '4px', fontSize: '0.75rem' }}>{d.event}</code>
                         </td>
                         <td>
-                          <span className={`status-badge ${d.status < 300 ? 'success' : 'failed'}`}>{d.status}</span>
+                          <StatusBadge status={d.status < 300 ? 'SUCCESS' : 'FAILED'}>{String(d.status)}</StatusBadge>
                         </td>
                         <td style={{ fontSize: '0.82rem' }}>{d.durationMs}ms</td>
                         <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{timeAgo(d.timestamp)}</td>
@@ -335,9 +335,8 @@ export default function WebhooksPage() {
                   </tbody>
                 </table>
               </div>
-            )}
-          </div>
-        )}
+            </div>
+          ))}
       </div>
 
       {editing && (

@@ -5,6 +5,7 @@ import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { notifications as notificationsApi, auth, users as usersApi } from '@/lib/api';
 import { useSidebar } from './SidebarContext';
+import { useLocale } from './LocaleProvider';
 
 type Notification = {
   id: string;
@@ -34,6 +35,7 @@ export default function TopBar() {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const { toggle: toggleSidebar } = useSidebar();
+  const { locale, setLocale } = useLocale();
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +100,25 @@ export default function TopBar() {
         onClick={toggleSidebar}
       >
         ☰
+      </button>
+
+      <button
+        type="button"
+        onClick={() => setLocale(locale === 'en' ? 'he' : 'en')}
+        title={locale === 'en' ? 'Switch to Hebrew' : 'Switch to English'}
+        style={{
+          padding: '6px 12px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: 'var(--radius-md)',
+          color: 'var(--text-secondary)',
+          cursor: 'pointer',
+          fontSize: '0.78rem',
+          fontWeight: 600,
+          fontFamily: 'inherit',
+        }}
+      >
+        {locale === 'en' ? 'עברית' : 'English'}
       </button>
 
       <div style={{ position: 'relative' }}>

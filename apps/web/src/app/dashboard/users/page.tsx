@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { users as usersApi } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { StatusBadge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type User = {
   id: string;
@@ -76,16 +79,17 @@ export default function UsersPage() {
       </header>
 
       <div className="page-body">
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={refetch} />}
 
-        {!loading && users.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>No users yet</div>
-          </div>
+        {loading && users.length === 0 ? (
+          <TableSkeleton rows={4} cols={6} />
+        ) : !loading && users.length === 0 ? (
+          <EmptyState
+            icon="👥"
+            title="No users yet"
+            description="Invite teammates to collaborate on backup management."
+            cta={{ label: '+ Invite User', onClick: () => setShowInvite(true) }}
+          />
         ) : (
           <div className="table-container">
             <table>
@@ -158,9 +162,9 @@ export default function UsersPage() {
                           : 'Never'}
                       </td>
                       <td>
-                        <span className={`status-badge ${user.active !== false ? 'online' : 'offline'}`}>
+                        <StatusBadge status={user.active !== false ? 'ACTIVE' : 'OFFLINE'}>
                           {user.active !== false ? 'Active' : 'Deactivated'}
-                        </span>
+                        </StatusBadge>
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: '4px' }}>
@@ -196,7 +200,19 @@ function InviteModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  function validate(): string | null {
+    if (!email.match(/^[^\s@]+@[^\s@]+\.[^\s@]+$/)) return 'Please enter a valid email address.';
+    if (!firstName.trim()) return 'First name is required.';
+    if (!lastName.trim()) return 'Last name is required.';
+    return null;
+  }
+
   async function submit() {
+    const v = validate();
+    if (v) {
+      setErr(v);
+      return;
+    }
     setBusy(true);
     setErr(null);
     try {

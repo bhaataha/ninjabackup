@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { storage as storageApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { Badge } from '@/components/Badge';
+import { CardGridSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type Vault = {
   id: string;
@@ -40,6 +44,7 @@ function formatBytes(b?: number) {
 }
 
 export default function StoragePage() {
+  const toast = useToast();
   const { data, loading, error, refetch } = useFetch<Vault[]>(() => storageApi.list() as Promise<Vault[]>);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -54,7 +59,6 @@ export default function StoragePage() {
     versioning: true,
   });
   const [busy, setBusy] = useState(false);
-  const [testResult, setTestResult] = useState<string | null>(null);
   const [createErr, setCreateErr] = useState<string | null>(null);
 
   const vaults = data ?? [];
@@ -81,27 +85,37 @@ export default function StoragePage() {
       setShowCreate(false);
       setForm({ name: '', type: 'S3', endpoint: '', bucket: '', region: '', accessKey: '', secretKey: '', immutable: false, versioning: true });
       refetch();
+      toast.success('Storage vault created', form.name);
     } catch (e: any) {
       setCreateErr(e?.message ?? 'Failed to create vault');
+      toast.error('Failed to create vault', e?.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function testConnection(id: string) {
-    setTestResult(null);
     try {
       const r = await storageApi.testConnection(id);
-      setTestResult(r.success ? `✓ Connected (${r.latencyMs}ms)` : '✗ Connection failed');
+      if (r.success) {
+        toast.success('Connection successful', `Latency ${r.latencyMs}ms`);
+      } else {
+        toast.error('Connection failed');
+      }
     } catch (e: any) {
-      setTestResult(`✗ ${e?.message ?? 'Failed'}`);
+      toast.error('Connection failed', e?.message);
     }
   }
 
   async function remove(id: string) {
     if (!confirm('Delete this vault? Backups already stored will remain in the bucket.')) return;
-    await storageApi.delete(id);
-    refetch();
+    try {
+      await storageApi.delete(id);
+      refetch();
+      toast.success('Vault deleted');
+    } catch (e: any) {
+      toast.error('Failed to delete vault', e?.message);
+    }
   }
 
   return (
@@ -119,17 +133,7 @@ export default function StoragePage() {
       </header>
 
       <div className="page-body">
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
-          </div>
-        )}
-
-        {testResult && (
-          <div className="card" style={{ marginBottom: 'var(--space-lg)' }}>
-            <div style={{ fontSize: '0.85rem' }}>{testResult}</div>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={refetch} />}
 
         {showCreate && (
           <div
@@ -175,7 +179,7 @@ export default function StoragePage() {
               </div>
               <div>
                 <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '6px' }}>Endpoint</label>
-                <input type="text" value={form.endpoint} onChange={(e) => update('endpoint', e.target.value)} placeholder="s3.amazonaws.com" style={inputStyle} />
+                <input type="url" value={form.endpoint} onChange={(e) => update('endpoint', e.target.value)} placeholder="https://s3.amazonaws.com" style={inputStyle} />
               </div>
             </div>
 
@@ -230,12 +234,16 @@ export default function StoragePage() {
           </div>
         )}
 
-        {!loading && vaults.length === 0 && !showCreate && (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>No storage vaults configured</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Add an S3-compatible bucket to start storing backups.</div>
-          </div>
-        )}
+        {loading && vaults.length === 0 && !showCreate ? (
+          <CardGridSkeleton cards={3} minWidth={380} />
+        ) : !loading && vaults.length === 0 && !showCreate ? (
+          <EmptyState
+            icon="☁️"
+            title="No storage vaults configured"
+            description="Add an S3-compatible bucket (AWS, MinIO, B2, R2, Wasabi, or local) to start storing encrypted backups."
+            cta={{ label: '+ Add Vault', onClick: () => setShowCreate(true) }}
+          />
+        ) : null}
 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(380px, 1fr))', gap: 'var(--space-lg)' }}>
           {vaults.map((vault) => {
@@ -292,16 +300,16 @@ export default function StoragePage() {
 
                 <div style={{ display: 'flex', gap: 'var(--space-sm)', flexWrap: 'wrap', marginBottom: 'var(--space-md)' }}>
                   {vault.immutable && (
-                    <Badge color="var(--accent-success)" bg="var(--accent-success-glow)">
+                    <Badge tone="success" size="xs">
                       🔒 Immutable
                     </Badge>
                   )}
                   {vault.versioning && (
-                    <Badge color="var(--accent-primary)" bg="var(--accent-glow)">
+                    <Badge tone="primary" size="xs">
                       📚 Versioning
                     </Badge>
                   )}
-                  <Badge color="var(--accent-purple)" bg="rgba(139, 92, 246, 0.1)">
+                  <Badge tone="purple" size="xs">
                     🔐 AES-256-GCM
                   </Badge>
                 </div>
@@ -340,8 +348,3 @@ function Stat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Badge({ color, bg, children }: { color: string; bg: string; children: React.ReactNode }) {
-  return (
-    <span style={{ padding: '2px 8px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 600, color, background: bg }}>{children}</span>
-  );
-}

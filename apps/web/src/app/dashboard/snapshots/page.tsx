@@ -3,6 +3,9 @@
 import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { snapshots as snapshotsApi } from '@/lib/api';
+import { TypeBadge, Badge } from '@/components/Badge';
+import { CardGridSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type Snapshot = {
   id: string;
@@ -77,24 +80,17 @@ export default function SnapshotsPage() {
       </header>
 
       <div className="page-body">
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>
-              Failed to load snapshots: {error}{' '}
-              <button className="btn btn-sm btn-secondary" onClick={refetch} style={{ marginLeft: 8 }}>
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
+        {error && <ErrorBanner message={`Failed to load snapshots: ${error}`} onRetry={refetch} />}
+
+        {loading && list.length === 0 && <CardGridSkeleton cards={4} minWidth={420} />}
 
         {!loading && list.length === 0 && !error && (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 8 }}>No snapshots yet</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Snapshots appear here after backup jobs complete successfully.
-            </div>
-          </div>
+          <EmptyState
+            icon="📸"
+            title="No snapshots yet"
+            description="Snapshots appear here after backup jobs complete successfully."
+            cta={{ label: 'View Jobs', onClick: () => {}, href: '/dashboard/jobs' }}
+          />
         )}
 
         {list.length > 0 && (
@@ -161,18 +157,7 @@ export default function SnapshotsPage() {
                       <span style={{ fontWeight: 700, fontSize: '0.9rem' }}>
                         {snap.agentHostname ?? snap.agentId.slice(0, 8)}
                       </span>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          background: snap.type === 'IMAGE' ? 'rgba(139, 92, 246, 0.1)' : 'var(--accent-glow)',
-                          color: snap.type === 'IMAGE' ? 'var(--accent-purple)' : 'var(--accent-primary)',
-                        }}
-                      >
-                        {snap.type}
-                      </span>
+                      <TypeBadge type={snap.type} />
                       <code
                         style={{
                           fontSize: '0.7rem',
@@ -210,19 +195,9 @@ export default function SnapshotsPage() {
                 {snap.paths && snap.paths.length > 0 && (
                   <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: 'var(--space-sm)' }}>
                     {snap.paths.map((p, j) => (
-                      <span
-                        key={j}
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          background: 'var(--bg-secondary)',
-                          color: 'var(--text-muted)',
-                          fontFamily: 'monospace',
-                        }}
-                      >
+                      <Badge key={j} tone="muted" size="xs" style={{ fontFamily: 'monospace' }}>
                         {p}
-                      </span>
+                      </Badge>
                     ))}
                   </div>
                 )}

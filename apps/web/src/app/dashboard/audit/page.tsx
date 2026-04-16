@@ -3,6 +3,9 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { audit as auditApi } from '@/lib/api';
+import { Badge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type AuditLog = {
   id: string;
@@ -121,18 +124,12 @@ export default function AuditPage() {
           </button>
         </div>
 
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={refetch} />}
 
         {loading && logs.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading audit log…</div>
+          <TableSkeleton rows={8} cols={6} />
         ) : filtered.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>No audit entries</div>
-          </div>
+          <EmptyState icon="📝" title="No audit entries" description="Actions taken by users and the system will appear here." />
         ) : (
           <div className="table-container">
             <table>
@@ -189,31 +186,9 @@ export default function AuditPage() {
                       </td>
                       <td>
                         {log.hmacValid !== false ? (
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              background: 'var(--accent-success-glow)',
-                              color: 'var(--accent-success)',
-                            }}
-                          >
-                            🔒 HMAC Valid
-                          </span>
+                          <Badge tone="success" size="xs">🔒 HMAC Valid</Badge>
                         ) : (
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              background: 'var(--accent-danger-glow)',
-                              color: 'var(--accent-danger)',
-                            }}
-                          >
-                            ⚠️ Invalid
-                          </span>
+                          <Badge tone="danger" size="xs">⚠️ Invalid</Badge>
                         )}
                       </td>
                     </tr>

@@ -755,3 +755,29 @@ input:focus, select:focus, textarea:focus {
     color: var(--text-secondary);
   }
 }
+
+/* ═══════════ RTL (Hebrew) ═══════════ */
+html[dir="rtl"] .main-content {
+  margin-left: 0;
+  margin-right: var(--sidebar-width);
+}
+html[dir="rtl"] .sidebar {
+  left: auto;
+  right: 0;
+  border-right: none;
+  border-left: 1px solid var(--border-default);
+}
+@media (max-width: 768px) {
+  html[dir="rtl"] .main-content { margin-right: 0; }
+  html[dir="rtl"] .sidebar {
+    transform: translateX(100%);
+  }
+  html[dir="rtl"] .sidebar.sidebar-open {
+    transform: translateX(0);
+  }
+}
+/* TopBar floats top-right in LTR; mirror to top-left in RTL */
+html[dir="rtl"] .main-content > div[style*="position: absolute"][style*="right: 0"] {
+  right: auto;
+  left: 0;
+}

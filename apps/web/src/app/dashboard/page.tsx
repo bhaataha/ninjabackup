@@ -6,6 +6,7 @@ import AreaChart from '@/components/AreaChart';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { agents as agentsApi, jobs as jobsApi, storage as storageApi, reports as reportsApi } from '@/lib/api';
+import { TypeBadge, StatusBadge } from '@/components/Badge';
 
 type Agent = {
   id: string;
@@ -187,21 +188,10 @@ export default function DashboardPage() {
                       <tr key={job.id}>
                         <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{job.agentHostname ?? job.agentId.slice(0, 8)}</td>
                         <td>
-                          <span
-                            style={{
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontSize: '0.7rem',
-                              fontWeight: 600,
-                              background: job.type === 'IMAGE' ? 'var(--accent-glow)' : 'rgba(139, 92, 246, 0.1)',
-                              color: job.type === 'IMAGE' ? 'var(--accent-primary)' : 'var(--accent-purple)',
-                            }}
-                          >
-                            {job.type}
-                          </span>
+                          <TypeBadge type={job.type} />
                         </td>
                         <td>
-                          <span className={`status-badge ${STATUS_CLASS[job.status] ?? 'offline'}`}>{job.status}</span>
+                          <StatusBadge status={job.status} />
                         </td>
                         <td>
                           {job.status === 'RUNNING' ? (
@@ -262,7 +252,7 @@ export default function DashboardPage() {
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{agent.hostname}</div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <span className={`status-badge ${STATUS_CLASS[agent.status] ?? 'offline'}`}>{agent.status.replace('_', ' ')}</span>
+                      <StatusBadge status={agent.status} />
                       <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                         Last backup: {timeAgo(agent.lastBackup)}
                       </div>
