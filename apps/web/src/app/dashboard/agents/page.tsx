@@ -7,6 +7,7 @@ import { agents as agentsApi } from '@/lib/api';
 import { StatusBadge, Badge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type DiskInfo = { drive: string; totalGb: number; freeGb: number };
 type Agent = {
@@ -56,6 +57,7 @@ const STATUS_CLASS: Record<string, string> = {
 const OS_ICON: Record<string, string> = { WINDOWS: '🪟', LINUX: '🐧', MACOS: '🍎' };
 
 export default function AgentsPage() {
+  const t = useT();
   const [filter, setFilter] = useState('ALL');
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [showTokenModal, setShowTokenModal] = useState(false);
@@ -93,19 +95,22 @@ export default function AgentsPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Agents</h1>
+            <h1 className="page-title">{t('Agents', 'סוכנים')}</h1>
             <p className="page-subtitle">
               {loading
-                ? 'Loading…'
-                : `${agents.length} agents · ${statCounts.ONLINE + statCounts.BACKING_UP} active`}
+                ? t('Loading…', 'טוען…')
+                : t(
+                    `${agents.length} agents · ${statCounts.ONLINE + statCounts.BACKING_UP} active`,
+                    `${agents.length} סוכנים · ${statCounts.ONLINE + statCounts.BACKING_UP} פעילים`,
+                  )}
             </p>
           </div>
           <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
             <button className="btn btn-secondary" onClick={() => setShowTokenModal(true)}>
-              🔑 Registration Token
+              🔑 {t('Registration Token', 'קוד רישום')}
             </button>
             <a href="/dashboard/download" className="btn btn-primary" style={{ textDecoration: 'none' }}>
-              + Add Agent
+              + {t('Add Agent', 'הוסף סוכן')}
             </a>
           </div>
         </div>

@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { Badge, TypeBadge } from '@/components/Badge';
 import { CardGridSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Retention = { daily?: number; weekly?: number; monthly?: number; yearly?: number };
 type Policy = {
@@ -37,6 +38,7 @@ function humanizeCron(cron: string): string {
 
 export default function PoliciesPage() {
   const toast = useToast();
+  const t = useT();
   const { data, loading, error, refetch } = useFetch<Policy[]>(() => policiesApi.list() as Promise<Policy[]>);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Policy | null>(null);
@@ -70,13 +72,18 @@ export default function PoliciesPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Backup Policies</h1>
+            <h1 className="page-title">{t('Backup Policies', 'מדיניות גיבוי')}</h1>
             <p className="page-subtitle">
-              {loading ? 'Loading…' : `${policies.length} policies · ${policies.filter((p) => p.enabled).length} active`}
+              {loading
+                ? t('Loading…', 'טוען…')
+                : t(
+                    `${policies.length} policies · ${policies.filter((p) => p.enabled).length} active`,
+                    `${policies.length} מדיניות · ${policies.filter((p) => p.enabled).length} פעילות`,
+                  )}
             </p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + Create Policy
+            + {t('Create Policy', 'צור מדיניות')}
           </button>
         </div>
       </header>
@@ -89,9 +96,12 @@ export default function PoliciesPage() {
         ) : !loading && policies.length === 0 ? (
           <EmptyState
             icon="📋"
-            title="No backup policies yet"
-            description="A policy defines what to back up, how often, and how long to keep snapshots. Create your first one to start protecting machines."
-            cta={{ label: '+ Create Policy', onClick: () => setShowCreate(true) }}
+            title={t('No backup policies yet', 'אין מדיניות גיבוי עדיין')}
+            description={t(
+              'A policy defines what to back up, how often, and how long to keep snapshots. Create your first one to start protecting machines.',
+              'מדיניות מגדירה מה לגבות, באיזו תדירות, וכמה זמן לשמור. צור את הראשונה כדי להתחיל להגן על מחשבים.',
+            )}
+            cta={{ label: '+ ' + t('Create Policy', 'צור מדיניות'), onClick: () => setShowCreate(true) }}
           />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 'var(--space-lg)' }}>

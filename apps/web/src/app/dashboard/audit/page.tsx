@@ -6,6 +6,7 @@ import { audit as auditApi } from '@/lib/api';
 import { Badge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useToast } from '@/components/Toast';
 
 type AuditLog = {
   id: string;
@@ -32,8 +33,11 @@ function getActionStyle(action: string) {
 }
 
 export default function AuditPage() {
+  const toast = useToast();
   const [search, setSearch] = useState('');
   const [actionFilter, setActionFilter] = useState('');
+  const [verifying, setVerifying] = useState(false);
+  const [verifyResult, setVerifyResult] = useState<{ total: number; valid: number; invalid: number; tampered: string[] } | null>(null);
   const { data, loading, error, refetch } = useFetch<AuditLog[]>(
     () => auditApi.list({ action: actionFilter || undefined, limit: 200 }) as Promise<AuditLog[]>,
     [actionFilter],
@@ -77,13 +81,60 @@ export default function AuditPage() {
             <h1 className="page-title">Audit Log</h1>
             <p className="page-subtitle">All actions are logged with HMAC signatures for integrity</p>
           </div>
-          <button className="btn btn-secondary" onClick={exportCsv} disabled={filtered.length === 0}>
-            📥 Export CSV
-          </button>
+          <div style={{ display: 'flex', gap: 'var(--space-sm)' }}>
+            <button
+              className="btn btn-secondary"
+              onClick={async () => {
+                setVerifying(true);
+                try {
+                  const r = await auditApi.verify();
+                  setVerifyResult(r);
+                  if (r.invalid === 0) {
+                    toast.success('Integrity check passed', `${r.valid} of ${r.total} entries verified`);
+                  } else {
+                    toast.error('Integrity check FAILED', `${r.invalid} tampered entries detected`);
+                  }
+                } catch (e: any) {
+                  toast.error('Verify failed', e?.message);
+                } finally {
+                  setVerifying(false);
+                }
+              }}
+              disabled={verifying}
+            >
+              🔒 {verifying ? 'Verifying…' : 'Verify Integrity'}
+            </button>
+            <button className="btn btn-secondary" onClick={exportCsv} disabled={filtered.length === 0}>
+              📥 Export CSV
+            </button>
+          </div>
         </div>
       </header>
 
       <div className="page-body">
+        {verifyResult && (
+          <div
+            className="card"
+            style={{
+              marginBottom: 'var(--space-lg)',
+              borderColor: verifyResult.invalid === 0 ? 'rgba(16, 185, 129, 0.4)' : 'rgba(239, 68, 68, 0.4)',
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: '0.95rem', color: verifyResult.invalid === 0 ? 'var(--accent-success)' : 'var(--accent-danger)' }}>
+                  {verifyResult.invalid === 0 ? '🔒 All entries valid' : `⚠️ ${verifyResult.invalid} tampered entries detected`}
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 4 }}>
+                  Verified {verifyResult.valid} of {verifyResult.total} most-recent entries via HMAC-SHA256.
+                </div>
+              </div>
+              <button className="btn btn-sm btn-secondary" onClick={() => setVerifyResult(null)}>
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
         <div style={{ display: 'flex', gap: 'var(--space-md)', marginBottom: 'var(--space-lg)', flexWrap: 'wrap' }}>
           <input
             type="text"

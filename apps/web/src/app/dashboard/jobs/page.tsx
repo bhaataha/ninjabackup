@@ -7,6 +7,7 @@ import { jobs as jobsApi, agents as agentsApi, policies as policiesApi } from '@
 import { TypeBadge, StatusBadge, Badge } from '@/components/Badge';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Job = {
   id: string;
@@ -61,6 +62,7 @@ function formatDuration(sec?: number, startedAt?: string): string {
 }
 
 export default function JobsPage() {
+  const t = useT();
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [showTriggerModal, setShowTriggerModal] = useState(false);
   const { data: rawJobs, loading, error, refetch } = useFetch<Job[]>(
@@ -100,14 +102,14 @@ export default function JobsPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Backup Jobs</h1>
+            <h1 className="page-title">{t('Backup Jobs', 'משימות גיבוי')}</h1>
             <p className="page-subtitle">
-              {loading ? 'Loading…' : `${jobs.length} jobs`}
+              {loading ? t('Loading…', 'טוען…') : t(`${jobs.length} jobs`, `${jobs.length} משימות`)}
               {error ? ` · ${error}` : ''}
             </p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowTriggerModal(true)}>
-            + Trigger Manual Backup
+            + {t('Trigger Manual Backup', 'הפעל גיבוי ידני')}
           </button>
         </div>
       </header>

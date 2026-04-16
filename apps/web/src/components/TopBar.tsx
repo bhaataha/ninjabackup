@@ -36,6 +36,7 @@ export default function TopBar() {
   const [showProfile, setShowProfile] = useState(false);
   const { toggle: toggleSidebar } = useSidebar();
   const { locale, setLocale } = useLocale();
+  const { connected: wsConnected } = useSocket({ tenantId: 'current' });
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -101,6 +102,34 @@ export default function TopBar() {
       >
         ☰
       </button>
+
+      <div
+        title={wsConnected ? 'Real-time updates connected' : 'Real-time disconnected'}
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 6,
+          padding: '6px 10px',
+          background: 'rgba(255,255,255,0.04)',
+          border: '1px solid var(--border-glass)',
+          borderRadius: 'var(--radius-md)',
+          fontSize: '0.72rem',
+          fontWeight: 600,
+          color: wsConnected ? 'var(--accent-success)' : 'var(--text-muted)',
+        }}
+      >
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: '50%',
+            background: wsConnected ? 'var(--accent-success)' : 'var(--text-muted)',
+            boxShadow: wsConnected ? '0 0 8px rgba(16, 185, 129, 0.5)' : undefined,
+            animation: wsConnected ? 'pulse 2s ease-in-out infinite' : undefined,
+          }}
+        />
+        {wsConnected ? 'Live' : 'Offline'}
+      </div>
 
       <button
         type="button"

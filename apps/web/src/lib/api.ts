@@ -251,6 +251,18 @@ export const restore = {
   list: () => request<any[]>('GET', '/restore'),
   trigger: (data: { snapshotId: string; agentId: string; targetPath?: string; includePaths?: string[] }) =>
     request<any>('POST', '/restore', data),
+  preview: (data: { snapshotId: string; agentId: string; targetPath?: string; selectedPaths?: string[] }) =>
+    request<{
+      snapshotId: string;
+      snapshotType: string;
+      sourceAgent: string;
+      targetAgent: string;
+      pathCount: number;
+      estimatedSizeBytes: string;
+      estimatedFiles: number;
+      targetPath: string;
+      warnings: string[];
+    }>('POST', '/restore/preview', data),
   getStatus: (id: string) => request<any>('GET', `/restore/${id}`),
 };
 
@@ -276,6 +288,8 @@ export const audit = {
       request<{ data: any[]; meta?: any } | any[]>('GET', `/audit${qs ? `?${qs}` : ''}`),
     );
   },
+  verify: () =>
+    request<{ total: number; valid: number; invalid: number; tampered: string[] }>('GET', '/audit/verify'),
 };
 
 // ─── API Keys ────────────────────────────────────────────

@@ -20,6 +20,14 @@ export class RestoreController {
     return this.restoreService.create(tid, data);
   }
 
+  @Post('preview')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Dry-run a restore — returns size/file estimates and warnings' })
+  async preview(@TenantId() tid: string, @Body() data: any) {
+    return this.restoreService.preview(tid, data);
+  }
+
   @Get()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()

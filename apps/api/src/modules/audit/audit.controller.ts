@@ -36,4 +36,10 @@ export class AuditController {
       limit: limit ? parseInt(limit) : undefined,
     });
   }
+
+  @Get('verify')
+  @ApiOperation({ summary: 'Verify HMAC integrity of recent audit log entries (last 500)' })
+  async verify(@TenantId() tid: string) {
+    return this.auditService.verify(tid);
+  }
 }

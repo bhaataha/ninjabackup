@@ -75,6 +75,7 @@ export class AppModule implements NestModule {
         'agents/(.*)/heartbeat',
         'jobs/(.*)/status',
         'restore/(.*)/status',
+        'reports/(.*)/print.html',
         'health',
         'health/(.*)',
         'installer',

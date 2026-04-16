@@ -96,4 +96,38 @@ export class AuditService {
     const payload = JSON.stringify(entry);
     return createHmac('sha256', this.hmacKey).update(payload).digest('hex');
   }
+
+  /**
+   * Re-compute the signature for each entry and report which ones don't match
+   * what's stored. This guards against tampering — if a row is changed in the
+   * DB outside the API, the signature won't verify.
+   */
+  async verify(tenantId: string) {
+    const logs = await this.prisma.auditLog.findMany({
+      where: { tenantId },
+      orderBy: { createdAt: 'desc' },
+      take: 500,
+    });
+    const results = logs.map((log) => {
+      const { signature, ...rest } = log as any;
+      const expected = this.sign({
+        tenantId: rest.tenantId,
+        userId: rest.userId,
+        action: rest.action,
+        resourceType: rest.resourceType,
+        resourceId: rest.resourceId,
+        details: rest.details,
+        ipAddress: rest.ipAddress,
+        userAgent: rest.userAgent,
+      });
+      return { id: log.id, valid: expected === signature };
+    });
+    const invalid = results.filter((r) => !r.valid);
+    return {
+      total: results.length,
+      valid: results.length - invalid.length,
+      invalid: invalid.length,
+      tampered: invalid.map((i) => i.id),
+    };
+  }
 }

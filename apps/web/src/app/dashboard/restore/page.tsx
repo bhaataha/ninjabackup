@@ -554,6 +554,26 @@ function RestoreModal({
   const [customPath, setCustomPath] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [preview, setPreview] = useState<any | null>(null);
+
+  async function runPreview() {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await restoreApi.preview({
+        snapshotId: snapshot.id,
+        agentId: targetAgentId,
+        targetPath: mode === 'custom' ? customPath : undefined,
+        selectedPaths: paths,
+      });
+      setPreview(r);
+    } catch (e: any) {
+      setErr(e?.message ?? 'Preview failed');
+      toast.error('Preview failed', e?.message);
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function submit() {
     setBusy(true);
@@ -645,12 +665,63 @@ function RestoreModal({
           </div>
         </div>
 
+        {preview && (
+          <div
+            style={{
+              padding: 'var(--space-md)',
+              background: 'rgba(59, 130, 246, 0.06)',
+              border: '1px solid rgba(59, 130, 246, 0.2)',
+              borderRadius: 'var(--radius-md)',
+              marginBottom: 'var(--space-md)',
+              fontSize: '0.85rem',
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 6 }}>👁 Preview</div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 8 }}>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Source</div>
+                <div style={{ fontWeight: 600 }}>{preview.sourceAgent}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Target</div>
+                <div style={{ fontWeight: 600 }}>{preview.targetAgent}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Files</div>
+                <div style={{ fontWeight: 600 }}>{preview.estimatedFiles?.toLocaleString() ?? '—'}</div>
+              </div>
+              <div>
+                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Size</div>
+                <div style={{ fontWeight: 600 }}>
+                  {preview.estimatedSizeBytes
+                    ? `${(Number(preview.estimatedSizeBytes) / 1024 / 1024 / 1024).toFixed(2)} GB`
+                    : '—'}
+                </div>
+              </div>
+            </div>
+            {preview.warnings?.length > 0 && (
+              <div style={{ marginTop: 8 }}>
+                {preview.warnings.map((w: string, i: number) => (
+                  <div key={i} style={{ fontSize: '0.78rem', color: 'var(--accent-warning)', marginTop: 2 }}>
+                    ⚠️ {w}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginBottom: 'var(--space-sm)' }}>{err}</div>}
 
         <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end' }}>
           <button className="btn btn-secondary btn-sm" onClick={onClose} disabled={busy}>
             Cancel
           </button>
+          {!preview ? (
+            <button className="btn btn-secondary btn-sm" onClick={runPreview} disabled={busy}>
+              👁 {busy ? 'Previewing…' : 'Preview'}
+            </button>
+          ) : null}
           <button className="btn btn-primary btn-sm" onClick={submit} disabled={busy}>
             ♻️ {busy ? 'Starting…' : 'Start Restore'}
           </button>

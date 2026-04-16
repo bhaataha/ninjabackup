@@ -128,6 +128,42 @@ export class RestoreService {
     return updated;
   }
 
+  /**
+   * Preview a restore without dispatching anything to the agent. Returns
+   * estimated counts so the user can sanity-check before committing.
+   */
+  async preview(
+    tenantId: string,
+    data: { snapshotId: string; agentId: string; selectedPaths?: string[]; targetPath?: string },
+  ) {
+    const snapshot = await this.prisma.snapshot.findFirst({
+      where: { id: data.snapshotId, job: { agent: { tenantId } } },
+      include: { job: { include: { agent: { select: { hostname: true } } } } },
+    });
+    if (!snapshot) throw new NotFoundException('Snapshot not found');
+    const target = await this.prisma.agent.findFirst({ where: { id: data.agentId, tenantId } });
+    if (!target) throw new NotFoundException('Target agent not found');
+
+    return {
+      snapshotId: snapshot.id,
+      snapshotType: snapshot.type,
+      snapshotCreatedAt: snapshot.createdAt,
+      sourceAgent: snapshot.job.agent.hostname,
+      targetAgent: target.hostname,
+      selectedPaths: data.selectedPaths ?? [],
+      pathCount: data.selectedPaths?.length ?? 0,
+      // Best-effort estimate from the snapshot metadata.
+      estimatedSizeBytes: snapshot.totalSize?.toString?.() ?? '0',
+      estimatedFiles: snapshot.totalFiles ?? 0,
+      targetPath: data.targetPath ?? '(original location)',
+      requiresOverwrite: !!data.targetPath ? false : true,
+      warnings: [
+        ...(snapshot.type === 'IMAGE' ? ['Image restore will overwrite the entire target disk.'] : []),
+        ...(target.id === snapshot.job.agentId ? [] : [`Cross-agent restore: source was ${snapshot.job.agent.hostname}, target is ${target.hostname}.`]),
+      ],
+    };
+  }
+
   async cancel(tenantId: string, id: string) {
     const job = await this.prisma.restoreJob.findFirst({
       where: { id, agent: { tenantId } },
