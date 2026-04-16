@@ -4,6 +4,7 @@
 !include "MUI2.nsh"
 !include "nsDialogs.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"  ; for ${GetParameters} / ${GetOptions} (silent-install args)
 
 ; ─── Version Info ─────────────────────────────────────────
 !define PRODUCT_NAME "NinjaBackup Agent"
@@ -34,6 +35,21 @@ SetCompressor /SOLID lzma
 Page custom ServerConfigPage ServerConfigPageLeave
 !insertmacro MUI_PAGE_INSTFILES
 !insertmacro MUI_PAGE_FINISH
+
+; ─── Silent install support ──────────────────────────────
+; Run silently with: NinjaBackup-Agent-Setup.exe /S /TOKEN=xxx /SERVER=https://api.example.com
+; The /TOKEN and /SERVER args populate $RegistrationToken and $ServerURL so the
+; ServerConfigPage is never shown. Useful for GPO / MDM / Intune deployments.
+Function .onInit
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/TOKEN=" $RegistrationToken
+  ClearErrors
+  ${GetOptions} $R0 "/SERVER=" $ServerURL
+  ${If} $ServerURL == ""
+    StrCpy $ServerURL "https://api.backup.itninja.co.il"
+  ${EndIf}
+FunctionEnd
 
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES

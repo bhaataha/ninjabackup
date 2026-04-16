@@ -6,6 +6,7 @@ import { snapshots as snapshotsApi } from '@/lib/api';
 import { TypeBadge, Badge } from '@/components/Badge';
 import { CardGridSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Snapshot = {
   id: string;
@@ -47,6 +48,7 @@ function timeAgo(d: string) {
 }
 
 export default function SnapshotsPage() {
+  const t = useT();
   const [selectedAgent, setSelectedAgent] = useState('ALL');
   const { data: snapshots, loading, error, refetch } = useFetch<Snapshot[]>(
     () => snapshotsApi.list() as Promise<Snapshot[]>,
@@ -69,11 +71,14 @@ export default function SnapshotsPage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Snapshots</h1>
+            <h1 className="page-title">{t('Snapshots', 'תמונות מצב')}</h1>
             <p className="page-subtitle">
               {loading
-                ? 'Loading…'
-                : `${list.length} snapshots across ${new Set(list.map((s) => s.agentId)).size} agents`}
+                ? t('Loading…', 'טוען…')
+                : t(
+                    `${list.length} snapshots across ${new Set(list.map((s) => s.agentId)).size} agents`,
+                    `${list.length} תמונות מצב מ-${new Set(list.map((s) => s.agentId)).size} סוכנים`,
+                  )}
             </p>
           </div>
         </div>
@@ -87,9 +92,12 @@ export default function SnapshotsPage() {
         {!loading && list.length === 0 && !error && (
           <EmptyState
             icon="📸"
-            title="No snapshots yet"
-            description="Snapshots appear here after backup jobs complete successfully."
-            cta={{ label: 'View Jobs', onClick: () => {}, href: '/dashboard/jobs' }}
+            title={t('No snapshots yet', 'אין תמונות מצב עדיין')}
+            description={t(
+              'Snapshots appear here after backup jobs complete successfully.',
+              'תמונות מצב מופיעות כאן לאחר שמשימות גיבוי מסתיימות בהצלחה.',
+            )}
+            cta={{ label: t('View Jobs', 'הצג משימות'), onClick: () => {}, href: '/dashboard/jobs' }}
           />
         )}
 

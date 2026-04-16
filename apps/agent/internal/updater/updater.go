@@ -1,6 +1,8 @@
 package updater
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -10,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -92,7 +95,10 @@ func (u *Updater) DownloadUpdate(update *UpdateInfo) (string, error) {
 		return "", fmt.Errorf("create temp file: %w", err)
 	}
 
-	n, err := io.Copy(tmpFile, resp.Body)
+	// Stream the body through SHA-256 while we write it to disk so we don't
+	// have to re-read the file afterwards.
+	hasher := sha256.New()
+	n, err := io.Copy(io.MultiWriter(tmpFile, hasher), resp.Body)
 	if err != nil {
 		tmpFile.Close()
 		os.Remove(tmpFile.Name())
@@ -101,6 +107,21 @@ func (u *Updater) DownloadUpdate(update *UpdateInfo) (string, error) {
 	tmpFile.Close()
 
 	log.Printf("Downloaded %d bytes to %s", n, tmpFile.Name())
+
+	// Verify the SHA-256 against the manifest's expected checksum. Protects
+	// against MITM, a compromised CDN cache, or partial downloads. We accept
+	// "sha256:<hex>" and bare hex.
+	if update.Checksum != "" {
+		expected := strings.TrimPrefix(update.Checksum, "sha256:")
+		actual := hex.EncodeToString(hasher.Sum(nil))
+		if !strings.EqualFold(actual, expected) {
+			os.Remove(tmpFile.Name())
+			return "", fmt.Errorf("checksum mismatch: expected %s, got %s", expected, actual)
+		}
+		log.Printf("✓ checksum OK (sha256:%s)", actual[:12])
+	} else {
+		log.Printf("⚠ no checksum supplied — skipping verification")
+	}
 
 	// Make executable on Unix
 	if runtime.GOOS != "windows" {

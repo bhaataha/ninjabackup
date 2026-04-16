@@ -1,0 +1,111 @@
+name: Sign Windows Binaries
+
+# Signs the Windows agent.exe + tray.exe + NSIS installer with an EV
+# code-signing certificate stored in GitHub Actions secrets.
+#
+# REQUIRED SECRETS:
+#   WINDOWS_CERT_BASE64   — base64-encoded .pfx certificate file
+#   WINDOWS_CERT_PASSWORD — password for the .pfx
+#
+# This runs automatically when a release is published, downloads the
+# unsigned binaries from the release, signs them with signtool +
+# timestamp server, and re-uploads the signed versions to the same release.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to sign (e.g. v1.0.0)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  sign:
+    name: Sign Windows binaries
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.release.tag_name }}" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Decode certificate
+        if: env.WINDOWS_CERT_BASE64 != ''
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        shell: pwsh
+        run: |
+          $bytes = [Convert]::FromBase64String($env:WINDOWS_CERT_BASE64)
+          [IO.File]::WriteAllBytes("cert.pfx", $bytes)
+
+      - name: Download unsigned Windows artefacts from release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir -p signed
+          gh release download ${{ steps.tag.outputs.tag }} \
+            --pattern "ninjabackup-agent-*-windows-amd64.exe" \
+            --pattern "ninjabackup-tray-*-windows-amd64.exe" \
+            --pattern "NinjaBackup-Agent-Setup-*.exe" \
+            --dir signed
+          ls -lh signed/
+
+      - name: Sign binaries with signtool
+        if: env.WINDOWS_CERT_BASE64 != ''
+        env:
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Select-Object -Last 1
+          Get-ChildItem signed/*.exe | ForEach-Object {
+            Write-Host "Signing $($_.Name)..."
+            & $signtool sign `
+              /f cert.pfx `
+              /p $env:WINDOWS_CERT_PASSWORD `
+              /tr http://timestamp.digicert.com `
+              /td sha256 `
+              /fd sha256 `
+              /d "NinjaBackup Agent" `
+              /du "https://backup.itninja.co.il" `
+              $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+
+            Write-Host "Verifying $($_.Name)..."
+            & $signtool verify /pa /v $_.FullName
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Skip signing (no cert configured)
+        if: env.WINDOWS_CERT_BASE64 == ''
+        env:
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        run: echo "::warning::WINDOWS_CERT_BASE64 secret not set — skipping signing. Add an EV code-signing cert to enable."
+
+      - name: Upload signed binaries back to release
+        if: env.WINDOWS_CERT_BASE64 != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WINDOWS_CERT_BASE64: ${{ secrets.WINDOWS_CERT_BASE64 }}
+        shell: bash
+        run: |
+          gh release upload ${{ steps.tag.outputs.tag }} signed/*.exe --clobber
+
+      - name: Cleanup certificate
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path cert.pfx) { Remove-Item cert.pfx -Force }

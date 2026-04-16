@@ -7,6 +7,7 @@ import { useToast } from '@/components/Toast';
 import { Badge } from '@/components/Badge';
 import { CardGridSkeleton } from '@/components/Skeleton';
 import { EmptyState, ErrorBanner } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Vault = {
   id: string;
@@ -45,6 +46,7 @@ function formatBytes(b?: number) {
 
 export default function StoragePage() {
   const toast = useToast();
+  const t = useT();
   const { data, loading, error, refetch } = useFetch<Vault[]>(() => storageApi.list() as Promise<Vault[]>);
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({
@@ -123,11 +125,13 @@ export default function StoragePage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Storage Vaults</h1>
-            <p className="page-subtitle">{loading ? 'Loading…' : `${vaults.length} vaults configured`}</p>
+            <h1 className="page-title">{t('Storage Vaults', 'אחסון')}</h1>
+            <p className="page-subtitle">
+              {loading ? t('Loading…', 'טוען…') : t(`${vaults.length} vaults configured`, `${vaults.length} כספות מוגדרות`)}
+            </p>
           </div>
           <button className="btn btn-primary" onClick={() => setShowCreate(true)}>
-            + Add Vault
+            + {t('Add Vault', 'הוסף כספת')}
           </button>
         </div>
       </header>

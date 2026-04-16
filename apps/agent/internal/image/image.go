@@ -124,48 +124,45 @@ func (ib *ImageBackup) linuxImageBackup(volume VolumeInfo, resticRepo, resticPas
 }
 
 func discoverWindowsVolumes() ([]VolumeInfo, error) {
-	cmd := exec.Command("powershell", "-Command",
-		`Get-Volume | Where-Object {$_.DriveLetter} | Select-Object DriveLetter, FileSystemLabel, FileSystem, Size, SizeRemaining | ConvertTo-Json`)
-
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		`Get-Volume | Where-Object {$_.DriveLetter} | `+
+			`Select-Object @{N='DriveLetter';E={$_.DriveLetter.ToString()}}, FileSystemLabel, FileSystem, Size, SizeRemaining, `+
+			`@{N='DriveType';E={$_.DriveType.ToString()}} | ConvertTo-Json -Compress`)
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("discover volumes: %w", err)
 	}
-
-	// Parse PowerShell JSON output
-	_ = output // TODO: parse JSON into []VolumeInfo
-
-	// Fallback: return basic info
-	return []VolumeInfo{
-		{MountPoint: "C:\\", Label: "System", FileSystem: "NTFS", IsSystem: true, IsBoot: true},
-	}, nil
+	vols, parseErr := parseWindowsVolumes(output)
+	if parseErr != nil || len(vols) == 0 {
+		log.Printf("Get-Volume parse fallback: %v", parseErr)
+		return []VolumeInfo{{DevicePath: `\\.\C:`, MountPoint: `C:\`, Label: "System", FileSystem: "NTFS", IsSystem: true, IsBoot: true}}, nil
+	}
+	return vols, nil
 }
 
 func discoverLinuxVolumes() ([]VolumeInfo, error) {
-	cmd := exec.Command("lsblk", "-J", "-o", "NAME,MOUNTPOINT,FSTYPE,SIZE,FSAVAIL,LABEL")
+	// `-b` returns sizes in bytes (numeric); `-J` is JSON output.
+	cmd := exec.Command("lsblk", "-J", "-b", "-o", "NAME,MOUNTPOINT,FSTYPE,SIZE,FSAVAIL,LABEL,TYPE")
 	output, err := cmd.Output()
 	if err != nil {
 		return nil, fmt.Errorf("lsblk: %w", err)
 	}
-
-	_ = output // TODO: parse JSON
-
-	return []VolumeInfo{
-		{DevicePath: "/dev/sda1", MountPoint: "/", FileSystem: "ext4", IsSystem: true},
-	}, nil
+	vols, parseErr := parseLinuxVolumes(output)
+	if parseErr != nil || len(vols) == 0 {
+		log.Printf("lsblk parse fallback: %v", parseErr)
+		return []VolumeInfo{{DevicePath: "/dev/sda1", MountPoint: "/", FileSystem: "ext4", IsSystem: true}}, nil
+	}
+	return vols, nil
 }
 
 func discoverMacVolumes() ([]VolumeInfo, error) {
-	cmd := exec.Command("diskutil", "list", "-plist")
-	output, err := cmd.Output()
-	if err != nil {
-		return nil, fmt.Errorf("diskutil: %w", err)
+	vols, err := parseMacVolumes()
+	if err != nil || len(vols) == 0 {
+		log.Printf("diskutil parse fallback: %v", err)
+		return []VolumeInfo{{DevicePath: "/dev/disk0s2", MountPoint: "/", FileSystem: "APFS", IsSystem: true}}, nil
 	}
-
-	_ = output
-	_ = strings.TrimSpace(string(output))
-
-	return []VolumeInfo{
-		{DevicePath: "/dev/disk0s2", MountPoint: "/", FileSystem: "APFS", IsSystem: true},
-	}, nil
+	return vols, nil
 }
+
+// silence unused import while we keep the strings import for legacy paths
+var _ = strings.TrimSpace

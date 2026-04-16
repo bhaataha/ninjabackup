@@ -169,3 +169,38 @@ func (cm *CertManager) CertsExist() bool {
 	}
 	return true
 }
+
+// IsExpiringSoon returns true when the current cert expires within `within`.
+// Used to drive auto-rotation: the agent calls this once per heartbeat tick
+// and re-issues the cert before TLS handshakes start failing.
+//
+// The default rotation window in main.go is 30 days — well below the 1-year
+// validity, so we get at least a month of grace if scheduling glitches.
+func (cm *CertManager) IsExpiringSoon(within time.Duration) bool {
+	certPath := filepath.Join(cm.certsDir, "agent.crt")
+	pemBytes, err := os.ReadFile(certPath)
+	if err != nil {
+		return true // missing → treat as expired so we regenerate
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return true
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return true
+	}
+	return time.Until(cert.NotAfter) < within
+}
+
+// RotateIfNeeded regenerates the cert when it's within `within` of expiry.
+// Idempotent — safe to call from a polling loop.
+func (cm *CertManager) RotateIfNeeded(agentID, hostname string, within time.Duration) (rotated bool, err error) {
+	if !cm.IsExpiringSoon(within) {
+		return false, nil
+	}
+	if err := cm.GenerateAgentCert(agentID, hostname); err != nil {
+		return false, fmt.Errorf("rotate cert: %w", err)
+	}
+	return true, nil
+}

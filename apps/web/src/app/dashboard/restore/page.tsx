@@ -6,6 +6,7 @@ import { snapshots as snapshotsApi, restore as restoreApi, files as filesApi, ag
 import { useToast } from '@/components/Toast';
 import { TableSkeleton } from '@/components/Skeleton';
 import { EmptyState } from '@/components/EmptyState';
+import { useT } from '@/components/LocaleProvider';
 
 type Snapshot = {
   id: string;
@@ -54,6 +55,7 @@ function getFileIcon(name: string, type: string) {
 
 export default function RestorePage() {
   const toast = useToast();
+  const t = useT();
   const { data: agentsData } = useFetch<Agent[]>(() => agentsApi.list() as Promise<Agent[]>);
   const [agentId, setAgentId] = useState('');
   const { data: snapshotsData } = useFetch<Snapshot[]>(
@@ -124,12 +126,12 @@ export default function RestorePage() {
       <header className="page-header">
         <div className="page-header-inner">
           <div>
-            <h1 className="page-title">Restore</h1>
-            <p className="page-subtitle">Browse snapshots and restore files or folders</p>
+            <h1 className="page-title">{t('Restore', 'שחזור')}</h1>
+            <p className="page-subtitle">{t('Browse snapshots and restore files or folders', 'דפדף בתמונות מצב ושחזר קבצים או תיקיות')}</p>
           </div>
           {selectedFiles.length > 0 && (
             <button className="btn btn-primary" onClick={() => setShowRestoreModal(true)}>
-              ♻️ Restore {selectedFiles.length} item{selectedFiles.length > 1 ? 's' : ''}
+              ♻️ {t(`Restore ${selectedFiles.length} item${selectedFiles.length > 1 ? 's' : ''}`, `שחזר ${selectedFiles.length} פריטים`)}
             </button>
           )}
         </div>

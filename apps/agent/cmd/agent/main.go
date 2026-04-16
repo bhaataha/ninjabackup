@@ -145,6 +145,25 @@ func main() {
 	go autoUpdater.StartAutoUpdateLoop(6 * time.Hour)
 	log.Println("[✓] Auto-update loop started (6h interval)")
 
+	// 3a. Cert auto-rotation — checks once a day, regenerates 30 days before expiry
+	go func() {
+		ticker := time.NewTicker(24 * time.Hour)
+		defer ticker.Stop()
+		check := func() {
+			rotated, err := certMgr.RotateIfNeeded(cfg.AgentID, sysinfo.Gather().Hostname, 30*24*time.Hour)
+			if err != nil {
+				log.Printf("Cert rotation failed: %v", err)
+			} else if rotated {
+				log.Printf("[✓] mTLS certificate rotated (was within 30 days of expiry)")
+			}
+		}
+		check() // run once at startup
+		for range ticker.C {
+			check()
+		}
+	}()
+	log.Println("[✓] Cert rotation loop started (24h interval, 30d threshold)")
+
 	// 4. Local IPC server for tray companion app
 	hostname := sysinfo.Gather().Hostname
 	localHandlers := localapi.NewHandlers(localapi.Status{
