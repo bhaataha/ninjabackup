@@ -58,4 +58,11 @@ export class ApiKeysService {
     if (!key) throw new NotFoundException('API key not found');
     await this.prisma.apiKey.update({ where: { id }, data: { active: false } });
   }
+
+  async rename(tenantId: string, id: string, newName: string) {
+    const key = await this.prisma.apiKey.findFirst({ where: { id, user: { tenantId } } });
+    if (!key) throw new NotFoundException('API key not found');
+    await this.prisma.apiKey.update({ where: { id }, data: { name: newName } });
+    return { ok: true };
+  }
 }

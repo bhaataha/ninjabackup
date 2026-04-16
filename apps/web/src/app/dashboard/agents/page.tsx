@@ -4,6 +4,9 @@ import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { agents as agentsApi } from '@/lib/api';
+import { StatusBadge, Badge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type DiskInfo = { drive: string; totalGb: number; freeGb: number };
 type Agent = {
@@ -109,16 +112,7 @@ export default function AgentsPage() {
       </header>
 
       <div className="page-body">
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>
-              {error}{' '}
-              <button className="btn btn-sm btn-secondary" onClick={refetch} style={{ marginLeft: 8 }}>
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={refetch} />}
 
         <div style={{ display: 'flex', gap: 'var(--space-sm)', marginBottom: 'var(--space-xl)', flexWrap: 'wrap' }}>
           {Object.entries(statCounts).map(([key, count]) => (
@@ -138,13 +132,15 @@ export default function AgentsPage() {
           ))}
         </div>
 
-        {!loading && agents.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>No agents registered</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Generate a registration token and install the agent on a machine.
-            </div>
-          </div>
+        {loading && agents.length === 0 ? (
+          <TableSkeleton rows={5} cols={7} />
+        ) : !loading && agents.length === 0 ? (
+          <EmptyState
+            icon="🖥️"
+            title="No agents registered"
+            description="Generate a registration token, then run the install one-liner on the target machine."
+            cta={{ label: '+ Add Agent', onClick: () => {}, href: '/dashboard/download' }}
+          />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: selectedAgent ? '1fr 380px' : '1fr', gap: 'var(--space-lg)' }}>
             <div className="table-container">
@@ -183,26 +179,15 @@ export default function AgentsPage() {
                       </td>
                       <td style={{ fontSize: '0.8rem' }}>{agent.osVersion ?? agent.osType}</td>
                       <td>
-                        <span className={`status-badge ${STATUS_CLASS[agent.status] ?? 'offline'}`}>
-                          {agent.status.replace('_', ' ')}
-                        </span>
+                        <StatusBadge status={agent.status} />
                       </td>
                       <td style={{ fontWeight: 600 }}>{formatBytes(agent.totalDataBytes)}</td>
                       <td>{agent.totalBackups ?? 0}</td>
                       <td style={{ fontSize: '0.8rem' }}>{timeAgo(agent.lastBackup)}</td>
                       <td>
-                        <span
-                          style={{
-                            fontSize: '0.75rem',
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            background: 'var(--accent-success-glow)',
-                            color: 'var(--accent-success)',
-                            fontWeight: 600,
-                          }}
-                        >
+                        <Badge tone="success" size="xs">
                           v{agent.agentVersion ?? '?'}
-                        </span>
+                        </Badge>
                       </td>
                     </tr>
                   ))}

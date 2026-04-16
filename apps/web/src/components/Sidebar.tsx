@@ -2,6 +2,7 @@
 
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
+import { useSidebar } from './SidebarContext';
 
 const NAV_ITEMS = [
   {
@@ -43,49 +44,54 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
+  const { open, close } = useSidebar();
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-header">
-        <div className="sidebar-logo">N</div>
-        <span className="sidebar-brand">NinjaBackup</span>
-      </div>
+    <>
+      {open && <div className="sidebar-backdrop" onClick={close} aria-hidden />}
+      <aside className={`sidebar${open ? ' sidebar-open' : ''}`}>
+        <div className="sidebar-header">
+          <div className="sidebar-logo">N</div>
+          <span className="sidebar-brand">NinjaBackup</span>
+        </div>
 
-      <nav className="sidebar-nav">
-        {NAV_ITEMS.map((section) => (
-          <div className="nav-section" key={section.section}>
-            <div className="nav-section-label">{section.section}</div>
-            {section.items.map((item) => {
-              const isActive =
-                item.href === '/dashboard'
-                  ? pathname === '/dashboard'
-                  : pathname?.startsWith(item.href);
-              return (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`nav-item ${isActive ? 'active' : ''}`}
-                >
-                  <span className="nav-icon">{item.icon}</span>
-                  <span>{item.label}</span>
-                  {'badge' in item && item.badge && (
-                    <span className="nav-badge">{item.badge}</span>
-                  )}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+        <nav className="sidebar-nav">
+          {NAV_ITEMS.map((section) => (
+            <div className="nav-section" key={section.section}>
+              <div className="nav-section-label">{section.section}</div>
+              {section.items.map((item) => {
+                const isActive =
+                  item.href === '/dashboard'
+                    ? pathname === '/dashboard'
+                    : pathname?.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`nav-item ${isActive ? 'active' : ''}`}
+                    onClick={close}
+                  >
+                    <span className="nav-icon">{item.icon}</span>
+                    <span>{item.label}</span>
+                    {'badge' in item && item.badge && <span className="nav-badge">{item.badge}</span>}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
 
-      <div style={{
-        padding: 'var(--space-md) var(--space-lg)',
-        borderTop: '1px solid var(--border-default)',
-        fontSize: '0.75rem',
-        color: 'var(--text-muted)',
-      }}>
-        NinjaBackup v0.1.0
-      </div>
-    </aside>
+        <div
+          style={{
+            padding: 'var(--space-md) var(--space-lg)',
+            borderTop: '1px solid var(--border-default)',
+            fontSize: '0.75rem',
+            color: 'var(--text-muted)',
+          }}
+        >
+          NinjaBackup v1.0.0
+        </div>
+      </aside>
+    </>
   );
 }

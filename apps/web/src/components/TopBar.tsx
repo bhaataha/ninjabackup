@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { notifications as notificationsApi, auth, users as usersApi } from '@/lib/api';
+import { useSidebar } from './SidebarContext';
 
 type Notification = {
   id: string;
@@ -32,6 +33,7 @@ function getNotifIcon(type: string) {
 export default function TopBar() {
   const [showNotifs, setShowNotifs] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
+  const { toggle: toggleSidebar } = useSidebar();
   const notifRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
@@ -89,6 +91,15 @@ export default function TopBar() {
         zIndex: 60,
       }}
     >
+      <button
+        type="button"
+        className="sidebar-toggle"
+        aria-label="Open menu"
+        onClick={toggleSidebar}
+      >
+        ☰
+      </button>
+
       <div style={{ position: 'relative' }}>
         <input
           type="text"

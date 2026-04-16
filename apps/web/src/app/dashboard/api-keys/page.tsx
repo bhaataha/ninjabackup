@@ -3,6 +3,10 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { apiKeys as apiKeysApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
+import { Badge, StatusBadge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState } from '@/components/EmptyState';
 
 type ApiKey = {
   id: string;
@@ -35,6 +39,7 @@ function timeAgo(date?: string) {
 }
 
 export default function ApiKeysPage() {
+  const toast = useToast();
   const { data, loading, error, refetch } = useFetch<ApiKey[]>(() => apiKeysApi.list() as Promise<ApiKey[]>);
   const [showCreate, setShowCreate] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
@@ -42,6 +47,8 @@ export default function ApiKeysPage() {
   const [generatedKey, setGeneratedKey] = useState('');
   const [busy, setBusy] = useState(false);
   const [createErr, setCreateErr] = useState<string | null>(null);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const keys = data ?? [];
 
@@ -56,8 +63,10 @@ export default function ApiKeysPage() {
       const r = await apiKeysApi.create({ name: newKeyName, permissions: selectedPerms });
       setGeneratedKey(r.key);
       refetch();
+      toast.success('API key created', 'Copy it now — it will not be shown again.');
     } catch (e: any) {
       setCreateErr(e?.message ?? 'Failed to create key');
+      toast.error('Failed to create API key', e?.message);
     } finally {
       setBusy(false);
     }
@@ -65,8 +74,29 @@ export default function ApiKeysPage() {
 
   async function revoke(id: string) {
     if (!confirm('Revoke this API key? Any clients using it will lose access immediately.')) return;
-    await apiKeysApi.revoke(id);
-    refetch();
+    try {
+      await apiKeysApi.revoke(id);
+      refetch();
+      toast.success('API key revoked');
+    } catch (e: any) {
+      toast.error('Failed to revoke API key', e?.message);
+    }
+  }
+
+  async function commitRename(id: string) {
+    if (!renameValue.trim()) {
+      setRenamingId(null);
+      return;
+    }
+    try {
+      await apiKeysApi.rename(id, renameValue.trim());
+      setRenamingId(null);
+      setRenameValue('');
+      refetch();
+      toast.success('API key renamed');
+    } catch (e: any) {
+      toast.error('Failed to rename', e?.message);
+    }
   }
 
   const inputStyle: React.CSSProperties = {
@@ -236,14 +266,26 @@ export default function ApiKeysPage() {
           </div>
         )}
 
-        <div className="card">
-          {loading && keys.length === 0 ? (
-            <div style={{ padding: 'var(--space-xl)', textAlign: 'center', color: 'var(--text-muted)' }}>Loading…</div>
-          ) : keys.length === 0 ? (
-            <div style={{ padding: 'var(--space-xl)', textAlign: 'center' }}>
-              <div style={{ fontSize: '1rem', fontWeight: 600 }}>No API keys yet</div>
-            </div>
-          ) : (
+        {loading && keys.length === 0 ? (
+          <TableSkeleton rows={4} cols={7} />
+        ) : keys.length === 0 ? (
+          <EmptyState
+            icon="🔑"
+            title="No API keys yet"
+            description="Create one to give CI pipelines or external integrations programmatic access."
+            cta={{
+              label: '+ Create API Key',
+              onClick: () => {
+                setShowCreate(true);
+                setGeneratedKey('');
+                setNewKeyName('');
+                setSelectedPerms([]);
+                setCreateErr(null);
+              },
+            }}
+          />
+        ) : (
+          <div className="card">
             <div className="table-container" style={{ border: 'none' }}>
               <table>
                 <thead>
@@ -260,7 +302,37 @@ export default function ApiKeysPage() {
                 <tbody>
                   {keys.map((key) => (
                     <tr key={key.id}>
-                      <td style={{ fontWeight: 600 }}>{key.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {renamingId === key.id ? (
+                          <input
+                            autoFocus
+                            value={renameValue}
+                            onChange={(e) => setRenameValue(e.target.value)}
+                            onBlur={() => commitRename(key.id)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') commitRename(key.id);
+                              if (e.key === 'Escape') {
+                                setRenamingId(null);
+                                setRenameValue('');
+                              }
+                            }}
+                            className="input"
+                            style={{ padding: '4px 8px', fontSize: '0.85rem' }}
+                          />
+                        ) : (
+                          <span
+                            onClick={() => {
+                              if (!key.active) return;
+                              setRenamingId(key.id);
+                              setRenameValue(key.name);
+                            }}
+                            style={{ cursor: key.active ? 'text' : 'default' }}
+                            title={key.active ? 'Click to rename' : ''}
+                          >
+                            {key.name}
+                          </span>
+                        )}
+                      </td>
                       <td>
                         <code
                           style={{
@@ -277,32 +349,42 @@ export default function ApiKeysPage() {
                       <td>
                         <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
                           {key.permissions.map((p) => (
-                            <span
-                              key={p}
-                              style={{
-                                padding: '2px 6px',
-                                borderRadius: '4px',
-                                fontSize: '0.65rem',
-                                fontWeight: 600,
-                                background: 'rgba(139, 92, 246, 0.1)',
-                                color: 'var(--accent-purple)',
-                              }}
-                            >
+                            <Badge key={p} tone="purple" size="xs">
                               {p}
-                            </span>
+                            </Badge>
                           ))}
                         </div>
                       </td>
                       <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{new Date(key.createdAt).toLocaleDateString()}</td>
-                      <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>{timeAgo(key.lastUsedAt)}</td>
+                      <td style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        {key.lastUsedAt ? (
+                          <>
+                            {timeAgo(key.lastUsedAt)}
+                            <div style={{ fontSize: '0.7rem' }}>{new Date(key.lastUsedAt).toLocaleString()}</div>
+                          </>
+                        ) : (
+                          <span style={{ color: 'var(--text-muted)' }}>never</span>
+                        )}
+                      </td>
                       <td>
-                        <span className={`status-badge ${key.active ? 'online' : 'offline'}`}>{key.active ? 'Active' : 'Revoked'}</span>
+                        <StatusBadge status={key.active ? 'ACTIVE' : 'REVOKED'} />
                       </td>
                       <td>
                         {key.active && (
-                          <button className="btn btn-danger btn-sm" onClick={() => revoke(key.id)}>
-                            Revoke
-                          </button>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            <button
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => {
+                                setRenamingId(key.id);
+                                setRenameValue(key.name);
+                              }}
+                            >
+                              Rename
+                            </button>
+                            <button className="btn btn-danger btn-sm" onClick={() => revoke(key.id)}>
+                              Revoke
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -310,8 +392,8 @@ export default function ApiKeysPage() {
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </>
   );

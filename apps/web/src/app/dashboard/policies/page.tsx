@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { policies as policiesApi, agents as agentsApi } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { Badge, TypeBadge } from '@/components/Badge';
+import { CardGridSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type Retention = { daily?: number; weekly?: number; monthly?: number; yearly?: number };
 type Policy = {
@@ -79,17 +82,17 @@ export default function PoliciesPage() {
       </header>
 
       <div className="page-body">
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>{error}</div>
-          </div>
-        )}
+        {error && <ErrorBanner message={error} onRetry={refetch} />}
 
-        {!loading && policies.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>No backup policies yet</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Create your first policy to start backing up.</div>
-          </div>
+        {loading && policies.length === 0 ? (
+          <CardGridSkeleton cards={4} minWidth={420} />
+        ) : !loading && policies.length === 0 ? (
+          <EmptyState
+            icon="📋"
+            title="No backup policies yet"
+            description="A policy defines what to back up, how often, and how long to keep snapshots. Create your first one to start protecting machines."
+            cta={{ label: '+ Create Policy', onClick: () => setShowCreate(true) }}
+          />
         ) : (
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))', gap: 'var(--space-lg)' }}>
             {policies.map((policy) => (
@@ -105,18 +108,7 @@ export default function PoliciesPage() {
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                       <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>{policy.name}</h3>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          background: policy.type === 'IMAGE' ? 'var(--accent-glow)' : 'rgba(139, 92, 246, 0.1)',
-                          color: policy.type === 'IMAGE' ? 'var(--accent-primary)' : 'var(--accent-purple)',
-                        }}
-                      >
-                        {policy.type}
-                      </span>
+                      <TypeBadge type={policy.type} />
                     </div>
                     <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                       🕐 {policy.scheduleHuman ?? humanizeCron(policy.schedule)} · ☁️ {policy.storageVaultName ?? '—'}
@@ -166,19 +158,9 @@ export default function PoliciesPage() {
                     </div>
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                       {policy.includePaths.map((p, i) => (
-                        <span
-                          key={i}
-                          style={{
-                            padding: '2px 8px',
-                            borderRadius: '4px',
-                            fontSize: '0.75rem',
-                            background: 'var(--accent-success-glow)',
-                            color: 'var(--accent-success)',
-                            fontFamily: 'monospace',
-                          }}
-                        >
+                        <Badge key={i} tone="success" size="sm" style={{ fontFamily: 'monospace' }}>
                           {p}
-                        </span>
+                        </Badge>
                       ))}
                     </div>
                   </div>

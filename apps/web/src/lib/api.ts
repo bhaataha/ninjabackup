@@ -275,6 +275,7 @@ export const apiKeys = {
   list: () => request<any[]>('GET', '/api-keys'),
   create: (data: { name: string; permissions: string[] }) =>
     request<{ id: string; name: string; key: string; keyPrefix: string }>('POST', '/api-keys', data),
+  rename: (id: string, name: string) => request<{ ok: boolean }>('PATCH', `/api-keys/${id}`, { name }),
   revoke: (id: string) => request<void>('DELETE', `/api-keys/${id}`),
 };
 

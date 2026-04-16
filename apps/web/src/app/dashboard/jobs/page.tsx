@@ -4,6 +4,9 @@ import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { jobs as jobsApi, agents as agentsApi, policies as policiesApi } from '@/lib/api';
+import { TypeBadge, StatusBadge, Badge } from '@/components/Badge';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState, ErrorBanner } from '@/components/EmptyState';
 
 type Job = {
   id: string;
@@ -128,28 +131,17 @@ export default function JobsPage() {
           ))}
         </div>
 
-        {error && (
-          <div className="card" style={{ borderColor: 'rgba(239, 68, 68, 0.4)', marginBottom: 'var(--space-lg)' }}>
-            <div style={{ color: 'var(--accent-danger)', fontSize: '0.85rem' }}>
-              Failed to load jobs: {error}{' '}
-              <button className="btn btn-sm btn-secondary" onClick={refetch} style={{ marginLeft: 8 }}>
-                Retry
-              </button>
-            </div>
-          </div>
-        )}
+        {error && <ErrorBanner message={`Failed to load jobs: ${error}`} onRetry={refetch} />}
 
-        {loading && !rawJobs && (
-          <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading jobs…</div>
-        )}
+        {loading && !rawJobs && <TableSkeleton rows={6} cols={9} />}
 
         {!loading && jobs.length === 0 && !error && (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600, marginBottom: 8 }}>No backup jobs yet</div>
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Trigger a manual backup or wait for the next scheduled run.
-            </div>
-          </div>
+          <EmptyState
+            icon="📦"
+            title="No backup jobs yet"
+            description="Trigger a manual backup or wait for the next scheduled run."
+            cta={{ label: '+ Trigger Manual Backup', onClick: () => setShowTriggerModal(true) }}
+          />
         )}
 
         {jobs.length > 0 && (
@@ -176,21 +168,10 @@ export default function JobsPage() {
                     </td>
                     <td style={{ fontSize: '0.8rem' }}>{job.policyName ?? '—'}</td>
                     <td>
-                      <span
-                        style={{
-                          padding: '2px 8px',
-                          borderRadius: '4px',
-                          fontSize: '0.7rem',
-                          fontWeight: 600,
-                          background: job.type === 'IMAGE' ? 'var(--accent-glow)' : 'rgba(139, 92, 246, 0.1)',
-                          color: job.type === 'IMAGE' ? 'var(--accent-primary)' : 'var(--accent-purple)',
-                        }}
-                      >
-                        {job.type}
-                      </span>
+                      <TypeBadge type={job.type} />
                     </td>
                     <td>
-                      <span className={`status-badge ${STATUS_CLASS[job.status] ?? 'offline'}`}>{job.status}</span>
+                      <StatusBadge status={job.status} />
                     </td>
                     <td>
                       {job.status === 'RUNNING' ? (
@@ -210,18 +191,9 @@ export default function JobsPage() {
                     <td style={{ fontSize: '0.8rem' }}>{formatBytes(job.bytesUploaded)}</td>
                     <td style={{ fontSize: '0.8rem' }}>{formatDuration(job.durationSec, job.startedAt)}</td>
                     <td>
-                      <span
-                        style={{
-                          fontSize: '0.7rem',
-                          padding: '2px 6px',
-                          borderRadius: '4px',
-                          background: job.triggeredBy === 'manual' ? 'var(--accent-warning-glow)' : 'rgba(100, 116, 139, 0.1)',
-                          color: job.triggeredBy === 'manual' ? 'var(--accent-warning)' : 'var(--text-muted)',
-                          fontWeight: 600,
-                        }}
-                      >
+                      <Badge tone={job.triggeredBy === 'manual' ? 'warning' : 'muted'} size="xs">
                         {job.triggeredBy ?? 'schedule'}
-                      </span>
+                      </Badge>
                     </td>
                   </tr>
                 ))}

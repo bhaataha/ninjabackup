@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Delete, Body, Param, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Patch, Delete, Body, Param, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { ApiKeysService } from './api-keys.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -32,6 +32,14 @@ export class ApiKeysController {
       permissions: data.permissions,
       expiresAt: data.expiresAt ? new Date(data.expiresAt) : undefined,
     });
+  }
+
+  @Patch(':id')
+  @UseGuards(RolesGuard)
+  @Roles('OWNER', 'ADMIN')
+  @ApiOperation({ summary: 'Rename an API key (does not change the secret)' })
+  async rename(@TenantId() tid: string, @Param('id') id: string, @Body() body: { name: string }) {
+    return this.service.rename(tid, id, body.name);
   }
 
   @Delete(':id')
