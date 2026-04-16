@@ -95,6 +95,10 @@ func (s *Scheduler) handleCommand(cmd api.AgentCommand) {
 		runErr = s.handleBackupStart(cmd)
 	case "backup:cancel":
 		runErr = s.handleBackupCancel(cmd)
+	case "restore:start":
+		runErr = s.handleRestoreStart(cmd)
+	case "restore:cancel":
+		runErr = s.handleRestoreCancel(cmd)
 	default:
 		runErr = fmt.Errorf("unknown command type: %s", cmd.Type)
 	}
@@ -116,6 +120,45 @@ func (s *Scheduler) handleBackupStart(cmd api.AgentCommand) error {
 	excludes := toStringSlice(cmd.Payload["excludePatterns"])
 
 	return s.RunBackup(jobID, paths, excludes)
+}
+
+func (s *Scheduler) handleRestoreStart(cmd api.AgentCommand) error {
+	jobID, _ := cmd.Payload["restoreJobId"].(string)
+	if jobID == "" {
+		return fmt.Errorf("restore:start missing restoreJobId")
+	}
+	snapshotID, _ := cmd.Payload["resticSnapshotId"].(string)
+	if snapshotID == "" {
+		snapshotID, _ = cmd.Payload["snapshotId"].(string)
+	}
+	targetPath, _ := cmd.Payload["targetPath"].(string)
+	paths := toStringSlice(cmd.Payload["selectedPaths"])
+
+	// Report progress to the server — a dedicated callback endpoint exists at
+	// POST /restore/:id/status.
+	reportStatus := func(status, errMsg string) {
+		payload := map[string]any{"status": status}
+		if errMsg != "" {
+			payload["errorMessage"] = errMsg
+		}
+		_ = s.api.UpdateRestoreStatus(jobID, payload)
+	}
+
+	reportStatus("RUNNING", "")
+	if err := s.RunRestore(snapshotID, targetPath, paths); err != nil {
+		reportStatus("FAILED", err.Error())
+		return err
+	}
+	reportStatus("SUCCESS", "")
+	return nil
+}
+
+func (s *Scheduler) handleRestoreCancel(cmd api.AgentCommand) error {
+	// Restic doesn't expose a cancellation token mid-restore; we record the
+	// intent and rely on the next heartbeat to report COMPLETED-or-CANCELLED.
+	jobID, _ := cmd.Payload["restoreJobId"].(string)
+	log.Printf("Restore cancel requested for %s (restic restores are not cancellable)", jobID)
+	return nil
 }
 
 func (s *Scheduler) handleBackupCancel(cmd api.AgentCommand) error {

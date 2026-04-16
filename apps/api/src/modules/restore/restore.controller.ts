@@ -8,21 +8,54 @@ import { TenantId } from '../auth/decorators/tenant.decorator';
 
 @ApiTags('restore')
 @Controller('restore')
-@UseGuards(JwtAuthGuard)
-@ApiBearerAuth()
 export class RestoreController {
   constructor(private readonly restoreService: RestoreService) {}
 
   @Post()
-  @UseGuards(RolesGuard) @Roles('OWNER', 'ADMIN', 'OPERATOR')
-  @ApiOperation({ summary: 'Trigger a restore job' })
-  async create(@TenantId() tid: string, @Body() data: any) { return this.restoreService.create(tid, data); }
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'OPERATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Trigger a restore job — command dispatched to agent' })
+  async create(@TenantId() tid: string, @Body() data: any) {
+    return this.restoreService.create(tid, data);
+  }
 
   @Get()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @ApiOperation({ summary: 'List restore jobs' })
-  async findAll(@TenantId() tid: string) { return this.restoreService.findAll(tid); }
+  async findAll(@TenantId() tid: string) {
+    return this.restoreService.findAll(tid);
+  }
+
+  @Get(':id')
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get restore job status' })
+  async findOne(@TenantId() tid: string, @Param('id') id: string) {
+    return this.restoreService.getStatus(tid, id);
+  }
 
   @Get(':id/status')
-  @ApiOperation({ summary: 'Get restore job status' })
-  async getStatus(@TenantId() tid: string, @Param('id') id: string) { return this.restoreService.getStatus(tid, id); }
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Alias for GET /:id — kept for legacy clients' })
+  async getStatus(@TenantId() tid: string, @Param('id') id: string) {
+    return this.restoreService.getStatus(tid, id);
+  }
+
+  @Post(':id/status')
+  @ApiOperation({ summary: 'Agent callback: update restore progress' })
+  async updateStatus(@Param('id') id: string, @Body() data: any) {
+    return this.restoreService.updateStatus(id, data);
+  }
+
+  @Post(':id/cancel')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('OWNER', 'ADMIN', 'OPERATOR')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Cancel a running restore' })
+  async cancel(@TenantId() tid: string, @Param('id') id: string) {
+    return this.restoreService.cancel(tid, id);
+  }
 }

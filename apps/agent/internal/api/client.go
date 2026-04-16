@@ -235,6 +235,21 @@ func (c *Client) UpdateJobStatus(jobID string, update JobStatusUpdate) error {
 	return nil
 }
 
+// UpdateRestoreStatus reports restore progress / completion to the server.
+func (c *Client) UpdateRestoreStatus(restoreJobID string, update map[string]any) error {
+	body, _ := json.Marshal(update)
+	resp, err := c.httpClient.Post(
+		fmt.Sprintf("%s/restore/%s/status", c.baseURL, restoreJobID),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		return fmt.Errorf("update restore status: %w", err)
+	}
+	defer resp.Body.Close()
+	return nil
+}
+
 // FetchPolicies gets the assigned policies from the server
 func (c *Client) FetchPolicies(agentID string) ([]BackupPolicy, error) {
 	url := fmt.Sprintf("%s/agents/%s/policies", c.baseURL, agentID)

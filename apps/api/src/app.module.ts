@@ -69,7 +69,17 @@ export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     consumer
       .apply(TenantMiddleware)
-      .exclude('auth/(.*)', 'agents/register', 'agents/(.*)/heartbeat', 'health', 'health/(.*)', 'installer', 'installer/(.*)')
+      .exclude(
+        'auth/(.*)',
+        'agents/register',
+        'agents/(.*)/heartbeat',
+        'jobs/(.*)/status',
+        'restore/(.*)/status',
+        'health',
+        'health/(.*)',
+        'installer',
+        'installer/(.*)',
+      )
       .forRoutes('*');
   }
 }
