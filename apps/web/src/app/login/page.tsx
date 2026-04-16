@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showMfa, setShowMfa] = useState(false);
+  const [mfaToken, setMfaToken] = useState<string | null>(null);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -23,6 +24,7 @@ export default function LoginPage() {
 
       if (result.requiresMfa) {
         setShowMfa(true);
+        setMfaToken(result.mfaToken ?? null);
         setLoading(false);
         return;
       }
@@ -41,7 +43,7 @@ export default function LoginPage() {
     setError('');
 
     try {
-      const result = await auth.verifyMfa(mfaCode);
+      const result = await auth.verifyMfa(mfaCode, mfaToken ?? undefined);
       setTokens({ accessToken: result.accessToken, refreshToken: result.refreshToken });
       router.push('/dashboard');
     } catch (err: any) {
@@ -161,22 +163,6 @@ export default function LoginPage() {
               ) : 'Sign In'}
             </button>
 
-            {/* Divider */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', margin: 'var(--space-lg) 0' }}>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-glass)' }} />
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>or continue with</span>
-              <div style={{ flex: 1, height: '1px', background: 'var(--border-glass)' }} />
-            </div>
-
-            {/* SSO Buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-              <button type="button" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
-                <span style={{ fontSize: '1rem' }}>🔐</span> SSO / SAML
-              </button>
-              <button type="button" className="btn btn-secondary" style={{ justifyContent: 'center' }}>
-                <span style={{ fontSize: '1rem' }}>🔑</span> API Key
-              </button>
-            </div>
           </form>
         ) : (
           /* MFA Form */

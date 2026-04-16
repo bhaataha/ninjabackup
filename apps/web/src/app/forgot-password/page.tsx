@@ -1,19 +1,28 @@
 'use client';
 
 import { useState } from 'react';
+import { auth } from '@/lib/api';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    // Simulate API call
-    await new Promise(r => setTimeout(r, 1500));
-    setSent(true);
-    setLoading(false);
+    setError(null);
+    try {
+      await auth.forgotPassword(email);
+      setSent(true);
+    } catch (err: any) {
+      // For security, the API answers 200 even when the email doesn't exist —
+      // so a real error here means a network or 5xx failure.
+      setError(err?.message ?? 'Failed to send reset link');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const inputStyle: React.CSSProperties = {
@@ -62,6 +71,11 @@ export default function ForgotPasswordPage() {
               <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-secondary)', marginBottom: '6px' }}>Email address</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="admin@company.com" required style={inputStyle} autoFocus />
             </div>
+            {error && (
+              <div style={{ padding: '10px 14px', borderRadius: 'var(--radius-md)', background: 'var(--accent-danger-glow)', color: 'var(--accent-danger)', fontSize: '0.85rem', marginBottom: 'var(--space-md)', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+                ⚠️ {error}
+              </div>
+            )}
             <button type="submit" className="btn btn-primary" disabled={loading} style={{ width: '100%', justifyContent: 'center', padding: '13px', fontSize: '0.95rem', opacity: loading ? 0.7 : 1 }}>
               {loading ? '⏳ Sending...' : '📨 Send Reset Link'}
             </button>

@@ -3,48 +3,48 @@
 import { usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { useSidebar } from './SidebarContext';
-
-const NAV_ITEMS = [
-  {
-    section: 'Overview',
-    items: [
-      { label: 'Dashboard', href: '/dashboard', icon: '📊' },
-    ],
-  },
-  {
-    section: 'Management',
-    items: [
-      { label: 'Agents', href: '/dashboard/agents', icon: '🖥️' },
-      { label: 'Backup Jobs', href: '/dashboard/jobs', icon: '📦' },
-      { label: 'Policies', href: '/dashboard/policies', icon: '📋' },
-      { label: 'Snapshots', href: '/dashboard/snapshots', icon: '📸' },
-      { label: 'Restore', href: '/dashboard/restore', icon: '♻️' },
-      { label: 'Download Agent', href: '/dashboard/download', icon: '⬇️' },
-    ],
-  },
-  {
-    section: 'Infrastructure',
-    items: [
-      { label: 'Storage Vaults', href: '/dashboard/storage', icon: '☁️' },
-      { label: 'Alerts', href: '/dashboard/alerts', icon: '🔔', badge: '2' },
-      { label: 'Reports', href: '/dashboard/reports', icon: '📈' },
-    ],
-  },
-  {
-    section: 'Settings',
-    items: [
-      { label: 'Users', href: '/dashboard/users', icon: '👥' },
-      { label: 'API Keys', href: '/dashboard/api-keys', icon: '🔑' },
-      { label: 'Webhooks', href: '/dashboard/webhooks', icon: '🔗' },
-      { label: 'Audit Log', href: '/dashboard/audit', icon: '📝' },
-      { label: 'Settings', href: '/dashboard/settings', icon: '⚙️' },
-    ],
-  },
-];
+import { useT } from './LocaleProvider';
 
 export default function Sidebar() {
   const pathname = usePathname();
   const { open, close } = useSidebar();
+  const t = useT();
+
+  const NAV_ITEMS = [
+    {
+      section: t('Overview', 'סקירה'),
+      items: [{ label: t('Dashboard', 'לוח בקרה'), href: '/dashboard', icon: '📊' }],
+    },
+    {
+      section: t('Management', 'ניהול'),
+      items: [
+        { label: t('Agents', 'סוכנים'), href: '/dashboard/agents', icon: '🖥️' },
+        { label: t('Backup Jobs', 'משימות גיבוי'), href: '/dashboard/jobs', icon: '📦' },
+        { label: t('Policies', 'מדיניות'), href: '/dashboard/policies', icon: '📋' },
+        { label: t('Snapshots', 'תמונות מצב'), href: '/dashboard/snapshots', icon: '📸' },
+        { label: t('Restore', 'שחזור'), href: '/dashboard/restore', icon: '♻️' },
+        { label: t('Download Agent', 'הורדת סוכן'), href: '/dashboard/download', icon: '⬇️' },
+      ],
+    },
+    {
+      section: t('Infrastructure', 'תשתית'),
+      items: [
+        { label: t('Storage Vaults', 'אחסון'), href: '/dashboard/storage', icon: '☁️' },
+        { label: t('Alerts', 'התראות'), href: '/dashboard/alerts', icon: '🔔' },
+        { label: t('Reports', 'דוחות'), href: '/dashboard/reports', icon: '📈' },
+      ],
+    },
+    {
+      section: t('Settings', 'הגדרות'),
+      items: [
+        { label: t('Users', 'משתמשים'), href: '/dashboard/users', icon: '👥' },
+        { label: t('API Keys', 'מפתחות API'), href: '/dashboard/api-keys', icon: '🔑' },
+        { label: t('Webhooks', 'Webhooks'), href: '/dashboard/webhooks', icon: '🔗' },
+        { label: t('Audit Log', 'יומן פעולות'), href: '/dashboard/audit', icon: '📝' },
+        { label: t('Settings', 'הגדרות'), href: '/dashboard/settings', icon: '⚙️' },
+      ],
+    },
+  ];
 
   return (
     <>
@@ -73,7 +73,6 @@ export default function Sidebar() {
                   >
                     <span className="nav-icon">{item.icon}</span>
                     <span>{item.label}</span>
-                    {'badge' in item && item.badge && <span className="nav-badge">{item.badge}</span>}
                   </Link>
                 );
               })}

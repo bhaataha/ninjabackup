@@ -121,16 +121,25 @@ export class ApiError extends Error {
 
 export const auth = {
   login: (email: string, password: string) =>
-    request<{ accessToken: string; refreshToken: string; requiresMfa?: boolean }>('POST', '/auth/login', { email, password }),
+    request<{ accessToken: string; refreshToken: string; requiresMfa?: boolean; mfaToken?: string }>('POST', '/auth/login', { email, password }),
 
   register: (data: { email: string; password: string; firstName: string; lastName: string; organizationName: string; tenantName?: string }) =>
     request<{ accessToken: string; refreshToken: string }>('POST', '/auth/register', data),
 
-  verifyMfa: (code: string) =>
-    request<{ accessToken: string; refreshToken: string }>('POST', '/auth/mfa/verify', { code }),
+  verifyMfa: (code: string, mfaToken?: string) =>
+    request<{ accessToken: string; refreshToken: string }>('POST', '/auth/mfa/verify', { code, mfaToken }),
 
   setupMfa: () =>
-    request<{ secret: string; qrCodeUrl: string }>('POST', '/auth/mfa/setup'),
+    request<{ secret: string; qrCodeUrl: string; otpauthUrl?: string }>('POST', '/auth/mfa/setup'),
+
+  confirmMfa: (code: string) =>
+    request<{ ok: boolean }>('POST', '/auth/mfa/confirm', { code }),
+
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('POST', '/auth/forgot-password', { email }),
+
+  resetPassword: (token: string, newPassword: string) =>
+    request<{ message: string }>('POST', '/auth/reset-password', { token, newPassword }),
 
   logout: () => {
     clearTokens();

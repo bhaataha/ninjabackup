@@ -4,6 +4,8 @@ import { useState, useEffect, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { snapshots as snapshotsApi, restore as restoreApi, files as filesApi, agents as agentsApi } from '@/lib/api';
 import { useToast } from '@/components/Toast';
+import { TableSkeleton } from '@/components/Skeleton';
+import { EmptyState } from '@/components/EmptyState';
 
 type Snapshot = {
   id: string;
@@ -181,9 +183,11 @@ export default function RestorePage() {
         </div>
 
         {!snapshotId ? (
-          <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-            <div style={{ fontSize: '1rem', fontWeight: 600 }}>Select an agent and a snapshot to browse files</div>
-          </div>
+          <EmptyState
+            icon="♻️"
+            title="Select an agent + snapshot"
+            description="Pick which machine to restore from, then a snapshot, and the file browser will appear below."
+          />
         ) : (
           <>
             <div
@@ -243,11 +247,9 @@ export default function RestorePage() {
             </div>
 
             {browseLoading ? (
-              <div style={{ textAlign: 'center', padding: 'var(--space-xl)', color: 'var(--text-muted)' }}>Loading files…</div>
+              <TableSkeleton rows={6} cols={6} />
             ) : entries.length === 0 ? (
-              <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
-                <div style={{ fontSize: '0.95rem', color: 'var(--text-muted)' }}>This directory is empty.</div>
-              </div>
+              <EmptyState icon="📁" title="Empty directory" description="No files found at this path in the selected snapshot." />
             ) : (
               <div className="table-container">
                 <table>

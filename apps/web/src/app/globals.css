@@ -756,6 +756,42 @@ input:focus, select:focus, textarea:focus {
   }
 }
 
+/* ═══════════ Light theme ═══════════ */
+html[data-theme="light"] {
+  --bg-primary: #f5f7fb;
+  --bg-secondary: #ffffff;
+  --bg-card: rgba(255, 255, 255, 0.85);
+  --bg-card-hover: rgba(245, 247, 251, 0.95);
+  --bg-card-solid: #ffffff;
+  --bg-elevated: rgba(248, 250, 252, 0.9);
+  --bg-input: #ffffff;
+  --bg-glass: rgba(255, 255, 255, 0.6);
+
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --text-inverse: #ffffff;
+
+  --border-default: rgba(15, 23, 42, 0.08);
+  --border-hover: rgba(15, 23, 42, 0.16);
+  --border-active: rgba(59, 130, 246, 0.45);
+  --border-glass: rgba(15, 23, 42, 0.06);
+
+  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 4px 16px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 0 30px rgba(59, 130, 246, 0.04);
+
+  --accent-glow: rgba(59, 130, 246, 0.08);
+  --accent-success-glow: rgba(16, 185, 129, 0.10);
+  --accent-warning-glow: rgba(245, 158, 11, 0.10);
+  --accent-danger-glow: rgba(239, 68, 68, 0.08);
+}
+html[data-theme="light"] body {
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
 /* ═══════════ RTL (Hebrew) ═══════════ */
 html[dir="rtl"] .main-content {
   margin-left: 0;
