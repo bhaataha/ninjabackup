@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { installer as installerApi, agents as agentsApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3038/api/v1';
 
@@ -72,6 +73,7 @@ export default function DownloadPage() {
   const platforms = Array.from(grouped.keys());
   const current = grouped.get(selected) ?? [];
   const meta = PLATFORM_META[selected];
+  const toast = useToast();
 
   async function generateToken() {
     setTokenLoading(true);
@@ -79,8 +81,9 @@ export default function DownloadPage() {
       const r = await agentsApi.createToken();
       setToken(r.token);
       setShowToken(true);
+      toast.success('Registration token generated', 'Expires in 24 hours.');
     } catch (e: any) {
-      alert(`Failed: ${e?.message ?? 'unknown'}`);
+      toast.error('Failed to generate token', e?.message ?? 'unknown');
     } finally {
       setTokenLoading(false);
     }

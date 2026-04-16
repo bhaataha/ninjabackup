@@ -4,6 +4,7 @@ import { use, useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { agents as agentsApi, jobs as jobsApi, policies as policiesApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type DiskInfo = { drive: string; totalGb: number; freeGb: number; fsType?: string };
 type Agent = {
@@ -65,6 +66,7 @@ function formatDuration(sec?: number) {
 
 export default function AgentDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
+  const toast = useToast();
   const [activeTab, setActiveTab] = useState<'overview' | 'jobs' | 'disks' | 'policies'>('overview');
 
   const { data: agent, loading: agentLoading, error: agentError } = useFetch<Agent>(
@@ -93,14 +95,14 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
   async function runBackup() {
     const policy = policiesData?.[0];
     if (!policy) {
-      alert('No backup policies available. Create one first.');
+      toast.warning('No backup policies available', 'Create one on the Policies page first.');
       return;
     }
     try {
       await jobsApi.trigger({ agentId: id, policyId: policy.id });
-      alert(`Backup triggered with policy: ${policy.name}`);
+      toast.success('Backup triggered', `Using policy "${policy.name}"`);
     } catch (e: any) {
-      alert(`Failed: ${e?.message ?? 'unknown error'}`);
+      toast.error('Failed to trigger backup', e?.message ?? 'unknown error');
     }
   }
 
@@ -381,8 +383,12 @@ export default function AgentDetailPage({ params }: { params: Promise<{ id: stri
                     <button
                       className="btn btn-secondary btn-sm"
                       onClick={async () => {
-                        await policiesApi.assignAgent(policy.id, id);
-                        alert('Policy assigned');
+                        try {
+                          await policiesApi.assignAgent(policy.id, id);
+                          toast.success('Policy assigned', policy.name);
+                        } catch (e: any) {
+                          toast.error('Failed to assign policy', e?.message);
+                        }
                       }}
                     >
                       Assign

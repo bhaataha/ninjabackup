@@ -4,13 +4,19 @@ import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { useSocket } from '@/hooks/useSocket';
 import { alerts as alertsApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type AlertRule = {
   id: string;
-  name: string;
-  condition: string;
-  severity: 'CRITICAL' | 'WARNING' | 'INFO';
-  channels: string[];
+  name?: string;
+  type: string;
+  condition?: string;
+  conditions?: Record<string, any>;
+  severity?: 'CRITICAL' | 'WARNING' | 'INFO';
+  channels?: string[];
+  notifyEmail?: boolean;
+  notifyWebhook?: boolean;
+  webhookUrl?: string;
   enabled: boolean;
 };
 
@@ -24,6 +30,15 @@ type Alert = {
   acknowledged: boolean;
 };
 
+const RULE_TYPES = [
+  { value: 'BACKUP_FAILED', label: 'Backup failed', defaultSeverity: 'CRITICAL' as const },
+  { value: 'AGENT_OFFLINE', label: 'Agent offline > N minutes', defaultSeverity: 'WARNING' as const },
+  { value: 'STORAGE_FULL', label: 'Storage near quota', defaultSeverity: 'WARNING' as const },
+  { value: 'QUOTA_WARNING', label: 'Quota warning', defaultSeverity: 'INFO' as const },
+  { value: 'AGENT_VERSION_OLD', label: 'Agent version outdated', defaultSeverity: 'INFO' as const },
+  { value: 'RESTORE_FAILED', label: 'Restore failed', defaultSeverity: 'CRITICAL' as const },
+];
+
 function getSeverityStyle(s: string) {
   switch (s) {
     case 'CRITICAL':
@@ -36,7 +51,11 @@ function getSeverityStyle(s: string) {
 }
 
 export default function AlertsPage() {
+  const toast = useToast();
   const [tab, setTab] = useState<'alerts' | 'rules'>('alerts');
+  const [showCreateRule, setShowCreateRule] = useState(false);
+  const [editingRule, setEditingRule] = useState<AlertRule | null>(null);
+
   const { data: alertsData, refetch: refetchAlerts, error: alertsError } = useFetch<Alert[]>(
     () => alertsApi.list() as Promise<Alert[]>,
     [],
@@ -65,8 +84,29 @@ export default function AlertsPage() {
     try {
       await alertsApi.acknowledge(id);
       refetchAlerts();
-    } catch (e) {
-      console.error('Failed to acknowledge alert', e);
+    } catch (e: any) {
+      toast.error('Failed to acknowledge alert', e?.message);
+    }
+  }
+
+  async function toggleRule(rule: AlertRule) {
+    try {
+      await alertsApi.rules.update(rule.id, { enabled: !rule.enabled });
+      refetchRules();
+      toast.success(rule.enabled ? 'Rule disabled' : 'Rule enabled');
+    } catch (e: any) {
+      toast.error('Failed to update rule', e?.message);
+    }
+  }
+
+  async function deleteRule(rule: AlertRule) {
+    if (!confirm(`Delete rule "${rule.name ?? rule.type}"? Past alerts will remain.`)) return;
+    try {
+      await alertsApi.rules.delete(rule.id);
+      refetchRules();
+      toast.success('Rule deleted');
+    } catch (e: any) {
+      toast.error('Failed to delete rule', e?.message);
     }
   }
 
@@ -78,7 +118,7 @@ export default function AlertsPage() {
             <h1 className="page-title">Alerts</h1>
             <p className="page-subtitle">{allAlerts.filter((a) => !a.acknowledged).length} unacknowledged alerts</p>
           </div>
-          <button className="btn btn-primary" onClick={() => setTab('rules')}>
+          <button className="btn btn-primary" onClick={() => setShowCreateRule(true)}>
             + Create Rule
           </button>
         </div>
@@ -124,7 +164,7 @@ export default function AlertsPage() {
             {allAlerts.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
                 <div style={{ fontSize: '1rem', fontWeight: 600 }}>No alerts</div>
-                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>You're all caught up.</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>You&apos;re all caught up.</div>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
@@ -185,6 +225,12 @@ export default function AlertsPage() {
             {rules.length === 0 ? (
               <div className="card" style={{ textAlign: 'center', padding: 'var(--space-xl)' }}>
                 <div style={{ fontSize: '1rem', fontWeight: 600 }}>No alert rules defined</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginTop: 6 }}>
+                  Create a rule to get notified on events like backup failures or agents going offline.
+                </div>
+                <button className="btn btn-primary" style={{ marginTop: 'var(--space-md)' }} onClick={() => setShowCreateRule(true)}>
+                  + Create Rule
+                </button>
               </div>
             ) : (
               <div className="table-container">
@@ -192,7 +238,7 @@ export default function AlertsPage() {
                   <thead>
                     <tr>
                       <th>Rule</th>
-                      <th>Condition</th>
+                      <th>Type</th>
                       <th>Severity</th>
                       <th>Channels</th>
                       <th>Status</th>
@@ -201,10 +247,13 @@ export default function AlertsPage() {
                   </thead>
                   <tbody>
                     {rules.map((rule) => {
-                      const sev = getSeverityStyle(rule.severity);
+                      const sev = getSeverityStyle(rule.severity ?? 'INFO');
+                      const channels: string[] = [];
+                      if (rule.notifyEmail) channels.push('email');
+                      if (rule.notifyWebhook) channels.push('webhook');
                       return (
                         <tr key={rule.id}>
-                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rule.name}</td>
+                          <td style={{ fontWeight: 600, color: 'var(--text-primary)' }}>{rule.name ?? rule.type}</td>
                           <td>
                             <code
                               style={{
@@ -215,7 +264,7 @@ export default function AlertsPage() {
                                 borderRadius: '4px',
                               }}
                             >
-                              {rule.condition}
+                              {rule.type}
                             </code>
                           </td>
                           <td>
@@ -229,25 +278,27 @@ export default function AlertsPage() {
                                 color: sev.color,
                               }}
                             >
-                              {rule.severity}
+                              {rule.severity ?? 'INFO'}
                             </span>
                           </td>
-                          <td>{(rule.channels ?? []).join(', ') || '—'}</td>
+                          <td>{(rule.channels ?? channels).join(', ') || '—'}</td>
                           <td>
                             <span className={`status-badge ${rule.enabled ? 'online' : 'offline'}`}>
                               {rule.enabled ? 'Active' : 'Disabled'}
                             </span>
                           </td>
                           <td>
-                            <button
-                              className="btn btn-sm btn-secondary"
-                              onClick={async () => {
-                                await alertsApi.rules.update(rule.id, { enabled: !rule.enabled });
-                                refetchRules();
-                              }}
-                            >
-                              {rule.enabled ? 'Disable' : 'Enable'}
-                            </button>
+                            <div style={{ display: 'flex', gap: 4 }}>
+                              <button className="btn btn-sm btn-secondary" onClick={() => setEditingRule(rule)}>
+                                Edit
+                              </button>
+                              <button className="btn btn-sm btn-secondary" onClick={() => toggleRule(rule)}>
+                                {rule.enabled ? 'Disable' : 'Enable'}
+                              </button>
+                              <button className="btn btn-sm btn-danger" onClick={() => deleteRule(rule)}>
+                                Delete
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -259,6 +310,208 @@ export default function AlertsPage() {
           </>
         )}
       </div>
+
+      {showCreateRule && (
+        <RuleModal
+          mode="create"
+          onClose={() => setShowCreateRule(false)}
+          onSaved={() => {
+            setShowCreateRule(false);
+            refetchRules();
+            setTab('rules');
+            toast.success('Alert rule created');
+          }}
+        />
+      )}
+      {editingRule && (
+        <RuleModal
+          mode="edit"
+          rule={editingRule}
+          onClose={() => setEditingRule(null)}
+          onSaved={() => {
+            setEditingRule(null);
+            refetchRules();
+            toast.success('Alert rule updated');
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function RuleModal({
+  mode,
+  rule,
+  onClose,
+  onSaved,
+}: {
+  mode: 'create' | 'edit';
+  rule?: AlertRule;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(rule?.name ?? '');
+  const [type, setType] = useState(rule?.type ?? RULE_TYPES[0].value);
+  const [severity, setSeverity] = useState<'CRITICAL' | 'WARNING' | 'INFO'>(
+    rule?.severity ?? RULE_TYPES[0].defaultSeverity,
+  );
+  const [notifyEmail, setNotifyEmail] = useState(rule?.notifyEmail ?? true);
+  const [notifyWebhook, setNotifyWebhook] = useState(rule?.notifyWebhook ?? false);
+  const [webhookUrl, setWebhookUrl] = useState(rule?.webhookUrl ?? '');
+  const [offlineMinutes, setOfflineMinutes] = useState<number>(
+    (rule?.conditions as any)?.offlineMinutes ?? 30,
+  );
+  const [quotaPercent, setQuotaPercent] = useState<number>(
+    (rule?.conditions as any)?.quotaPercent ?? 80,
+  );
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    const conditions: Record<string, any> = {};
+    if (type === 'AGENT_OFFLINE') conditions.offlineMinutes = offlineMinutes;
+    if (type === 'STORAGE_FULL' || type === 'QUOTA_WARNING') conditions.quotaPercent = quotaPercent;
+
+    const payload = {
+      name: name || undefined,
+      type,
+      severity,
+      notifyEmail,
+      notifyWebhook,
+      webhookUrl: notifyWebhook ? webhookUrl : null,
+      conditions,
+      enabled: rule?.enabled ?? true,
+    };
+    try {
+      if (mode === 'create') {
+        await alertsApi.rules.create(payload);
+      } else if (rule) {
+        await alertsApi.rules.update(rule.id, payload);
+      }
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to save rule');
+      toast.error('Failed to save rule', e?.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 520, width: '90%', maxHeight: '90vh', overflowY: 'auto' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>
+          {mode === 'create' ? 'Create Alert Rule' : 'Edit Alert Rule'}
+        </h3>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name (optional)</label>
+          <input
+            className="input"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Weekend backup failures"
+          />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Event type</label>
+          <select
+            className="input"
+            value={type}
+            onChange={(e) => {
+              setType(e.target.value);
+              const meta = RULE_TYPES.find((t) => t.value === e.target.value);
+              if (meta) setSeverity(meta.defaultSeverity);
+            }}
+          >
+            {RULE_TYPES.map((t) => (
+              <option key={t.value} value={t.value}>
+                {t.label}
+              </option>
+            ))}
+          </select>
+
+          {type === 'AGENT_OFFLINE' && (
+            <>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Offline threshold (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                className="input"
+                value={offlineMinutes}
+                onChange={(e) => setOfflineMinutes(parseInt(e.target.value) || 30)}
+              />
+            </>
+          )}
+
+          {(type === 'STORAGE_FULL' || type === 'QUOTA_WARNING') && (
+            <>
+              <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Trigger at usage % of quota</label>
+              <input
+                type="number"
+                min={1}
+                max={100}
+                className="input"
+                value={quotaPercent}
+                onChange={(e) => setQuotaPercent(parseInt(e.target.value) || 80)}
+              />
+            </>
+          )}
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Severity</label>
+          <select className="input" value={severity} onChange={(e) => setSeverity(e.target.value as any)}>
+            <option value="CRITICAL">🔴 Critical</option>
+            <option value="WARNING">🟡 Warning</option>
+            <option value="INFO">🔵 Info</option>
+          </select>
+
+          <div style={{ display: 'flex', gap: 'var(--space-md)', marginTop: 'var(--space-sm)', flexWrap: 'wrap' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={notifyEmail} onChange={(e) => setNotifyEmail(e.target.checked)} />
+              📧 Email
+            </label>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', cursor: 'pointer' }}>
+              <input type="checkbox" checked={notifyWebhook} onChange={(e) => setNotifyWebhook(e.target.checked)} />
+              🔗 Webhook
+            </label>
+          </div>
+
+          {notifyWebhook && (
+            <input
+              type="url"
+              className="input"
+              placeholder="https://hooks.slack.com/..."
+              value={webhookUrl}
+              onChange={(e) => setWebhookUrl(e.target.value)}
+            />
+          )}
+        </div>
+
+        {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: 'var(--space-sm)' }}>{err}</div>}
+
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={save} disabled={busy}>
+            {busy ? 'Saving…' : mode === 'create' ? 'Create Rule' : '💾 Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

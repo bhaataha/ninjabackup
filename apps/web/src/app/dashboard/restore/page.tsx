@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { snapshots as snapshotsApi, restore as restoreApi, files as filesApi, agents as agentsApi } from '@/lib/api';
-// filesApi is imported above; no additional imports needed for VersionsModal.
+import { useToast } from '@/components/Toast';
 
 type Snapshot = {
   id: string;
@@ -51,6 +51,7 @@ function getFileIcon(name: string, type: string) {
 }
 
 export default function RestorePage() {
+  const toast = useToast();
   const { data: agentsData } = useFetch<Agent[]>(() => agentsApi.list() as Promise<Agent[]>);
   const [agentId, setAgentId] = useState('');
   const { data: snapshotsData } = useFetch<Snapshot[]>(
@@ -112,7 +113,7 @@ export default function RestorePage() {
       const r = await filesApi.download(snapshotId, filePath);
       window.open(r.url, '_blank');
     } catch (e: any) {
-      alert(`Download failed: ${e?.message ?? 'unknown'}`);
+      toast.error('Download failed', e?.message ?? 'unknown');
     }
   }
 
@@ -442,12 +443,13 @@ function VersionsModal({
     [snapshotId, path],
   );
 
+  const toast = useToast();
   async function download(versionSnapshotId: string) {
     try {
       const r = await filesApi.download(versionSnapshotId, path);
       window.open(r.url, '_blank');
     } catch (e: any) {
-      alert(`Download failed: ${e?.message ?? 'unknown'}`);
+      toast.error('Download failed', e?.message ?? 'unknown');
     }
   }
 
@@ -543,6 +545,7 @@ function RestoreModal({
   onClose: () => void;
   onRestored: () => void;
 }) {
+  const toast = useToast();
   const { data: agentsData } = useFetch<Agent[]>(() => agentsApi.list() as Promise<Agent[]>);
   const [targetAgentId, setTargetAgentId] = useState(snapshot.agentId);
   const [mode, setMode] = useState<'original' | 'custom'>('original');
@@ -561,9 +564,10 @@ function RestoreModal({
         includePaths: paths,
       });
       onRestored();
-      alert('Restore job started — check the Jobs page for progress.');
+      toast.success('Restore job started', 'Track progress on the Jobs page.');
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to start restore');
+      toast.error('Failed to start restore', e?.message);
     } finally {
       setBusy(false);
     }

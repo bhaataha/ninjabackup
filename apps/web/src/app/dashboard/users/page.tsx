@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { users as usersApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type User = {
   id: string;
@@ -33,6 +34,7 @@ function getRoleStyle(role: string) {
 }
 
 export default function UsersPage() {
+  const toast = useToast();
   const { data, loading, error, refetch } = useFetch<User[]>(() => usersApi.list() as Promise<User[]>);
   const [showInvite, setShowInvite] = useState(false);
 
@@ -40,13 +42,23 @@ export default function UsersPage() {
 
   async function disable(id: string) {
     if (!confirm('Disable this user?')) return;
-    await usersApi.update(id, { active: false });
-    refetch();
+    try {
+      await usersApi.update(id, { active: false });
+      refetch();
+      toast.success('User disabled');
+    } catch (e: any) {
+      toast.error('Failed to disable user', e?.message);
+    }
   }
 
   async function enable(id: string) {
-    await usersApi.update(id, { active: true });
-    refetch();
+    try {
+      await usersApi.update(id, { active: true });
+      refetch();
+      toast.success('User enabled');
+    } catch (e: any) {
+      toast.error('Failed to enable user', e?.message);
+    }
   }
 
   return (

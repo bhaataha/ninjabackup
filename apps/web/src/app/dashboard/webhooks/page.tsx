@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { webhooks as webhooksApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type Webhook = {
   id: string;
@@ -47,9 +48,11 @@ function timeAgo(date?: string) {
 }
 
 export default function WebhooksPage() {
+  const toast = useToast();
   const { data, refetch } = useFetch<Webhook[]>(() => webhooksApi.list() as Promise<Webhook[]>);
   const { data: deliveriesData } = useFetch<Delivery[]>(() => webhooksApi.deliveries() as Promise<Delivery[]>, [], { interval: 30_000 });
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<Webhook | null>(null);
   const [newName, setNewName] = useState('');
   const [newUrl, setNewUrl] = useState('');
   const [selectedEvents, setSelectedEvents] = useState<string[]>([]);
@@ -74,30 +77,46 @@ export default function WebhooksPage() {
       setNewUrl('');
       setSelectedEvents([]);
       refetch();
+      toast.success('Webhook created');
     } catch (e: any) {
       setErr(e?.message ?? 'Failed to create webhook');
+      toast.error('Failed to create webhook', e?.message);
     } finally {
       setBusy(false);
     }
   }
 
   async function toggle(wh: Webhook) {
-    await webhooksApi.update(wh.id, { active: !wh.active });
-    refetch();
+    try {
+      await webhooksApi.update(wh.id, { active: !wh.active });
+      refetch();
+      toast.success(wh.active ? 'Webhook disabled' : 'Webhook enabled');
+    } catch (e: any) {
+      toast.error('Failed to toggle webhook', e?.message);
+    }
   }
 
   async function remove(id: string) {
     if (!confirm('Delete this webhook?')) return;
-    await webhooksApi.delete(id);
-    refetch();
+    try {
+      await webhooksApi.delete(id);
+      refetch();
+      toast.success('Webhook deleted');
+    } catch (e: any) {
+      toast.error('Failed to delete webhook', e?.message);
+    }
   }
 
   async function test(id: string) {
     try {
       const r = await webhooksApi.test(id);
-      alert(r.success ? `✓ Test delivered (${r.status}, ${r.durationMs}ms)` : `✗ Failed (${r.status})`);
+      if (r.success) {
+        toast.success('Test webhook delivered', `HTTP ${r.status} · ${r.durationMs}ms`);
+      } else {
+        toast.error('Webhook test failed', `HTTP ${r.status}`);
+      }
     } catch (e: any) {
-      alert(`✗ ${e?.message ?? 'failed'}`);
+      toast.error('Webhook test failed', e?.message);
     }
   }
 
@@ -268,6 +287,9 @@ export default function WebhooksPage() {
                     <button className="btn btn-secondary btn-sm" onClick={() => test(wh.id)}>
                       🧪 Test
                     </button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setEditing(wh)}>
+                      Edit
+                    </button>
                     <button className="btn btn-secondary btn-sm" onClick={() => toggle(wh)}>
                       {wh.active ? 'Disable' : 'Enable'}
                     </button>
@@ -317,6 +339,126 @@ export default function WebhooksPage() {
           </div>
         )}
       </div>
+
+      {editing && (
+        <EditWebhookModal
+          webhook={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            refetch();
+            toast.success('Webhook updated');
+          }}
+        />
+      )}
     </>
+  );
+}
+
+function EditWebhookModal({
+  webhook,
+  onClose,
+  onSaved,
+}: {
+  webhook: Webhook;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [name, setName] = useState(webhook.name);
+  const [url, setUrl] = useState(webhook.url);
+  const [events, setEvents] = useState<string[]>(webhook.events);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  function toggle(ev: string) {
+    setEvents((p) => (p.includes(ev) ? p.filter((e) => e !== ev) : [...p, ev]));
+  }
+
+  async function save() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await webhooksApi.update(webhook.id, { name, url, events });
+      onSaved();
+    } catch (e: any) {
+      setErr(e?.message ?? 'Failed to save');
+      toast.error('Failed to save webhook', e?.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const ALL_EVENTS = [
+    'backup.success',
+    'backup.failed',
+    'agent.online',
+    'agent.offline',
+    'agent.status',
+    'restore.started',
+    'restore.failed',
+    'restore.complete',
+    'alert.triggered',
+  ];
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+        backdropFilter: 'blur(4px)',
+      }}
+      onClick={onClose}
+    >
+      <div className="card" style={{ maxWidth: 540, width: '90%' }} onClick={(e) => e.stopPropagation()}>
+        <h3 style={{ fontSize: '1.05rem', fontWeight: 700, marginBottom: 'var(--space-md)' }}>Edit Webhook</h3>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-sm)' }}>
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name</label>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Delivery URL</label>
+          <input type="url" className="input" value={url} onChange={(e) => setUrl(e.target.value)} />
+
+          <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: 'var(--space-sm)' }}>Events</label>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+            {ALL_EVENTS.map((ev) => (
+              <button
+                key={ev}
+                onClick={() => toggle(ev)}
+                style={{
+                  padding: '5px 12px',
+                  borderRadius: '99px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  background: events.includes(ev) ? 'var(--accent-glow)' : 'rgba(255,255,255,0.03)',
+                  color: events.includes(ev) ? 'var(--accent-primary)' : 'var(--text-muted)',
+                  border: `1px solid ${events.includes(ev) ? 'var(--border-active)' : 'var(--border-glass)'}`,
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                }}
+              >
+                {ev}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {err && <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginTop: 'var(--space-sm)' }}>{err}</div>}
+
+        <div style={{ display: 'flex', gap: 'var(--space-sm)', justifyContent: 'flex-end', marginTop: 'var(--space-md)' }}>
+          <button className="btn btn-sm btn-secondary" onClick={onClose} disabled={busy}>
+            Cancel
+          </button>
+          <button className="btn btn-sm btn-primary" onClick={save} disabled={busy || !name || !url || events.length === 0}>
+            {busy ? 'Saving…' : '💾 Save'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

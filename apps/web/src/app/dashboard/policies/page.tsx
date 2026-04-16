@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useFetch } from '@/hooks/useFetch';
 import { policies as policiesApi, agents as agentsApi } from '@/lib/api';
+import { useToast } from '@/components/Toast';
 
 type Retention = { daily?: number; weekly?: number; monthly?: number; yearly?: number };
 type Policy = {
@@ -32,6 +33,7 @@ function humanizeCron(cron: string): string {
 }
 
 export default function PoliciesPage() {
+  const toast = useToast();
   const { data, loading, error, refetch } = useFetch<Policy[]>(() => policiesApi.list() as Promise<Policy[]>);
   const [showCreate, setShowCreate] = useState(false);
   const [editing, setEditing] = useState<Policy | null>(null);
@@ -43,8 +45,9 @@ export default function PoliciesPage() {
     try {
       await policiesApi.update(p.id, { enabled: !p.enabled });
       refetch();
-    } catch (e) {
-      console.error('Failed to toggle policy', e);
+      toast.success(p.enabled ? 'Policy disabled' : 'Policy enabled');
+    } catch (e: any) {
+      toast.error('Failed to toggle policy', e?.message);
     }
   }
 
@@ -53,8 +56,9 @@ export default function PoliciesPage() {
     try {
       await policiesApi.delete(id);
       refetch();
-    } catch (e) {
-      console.error('Failed to delete policy', e);
+      toast.success('Policy deleted');
+    } catch (e: any) {
+      toast.error('Failed to delete policy', e?.message);
     }
   }
 
